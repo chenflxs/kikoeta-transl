@@ -1,0 +1,55 @@
+
+/* ── Page transition animations ── */
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pageFadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+
+.page-transition-fadeIn {
+  animation: pageFadeIn 200ms ease forwards;
+}
+
+.page-transition-fadeOut {
+  animation: pageFadeOut 150ms ease forwards;
+}
+
+/* Prevent a brief scrollbar flash while the page is animating:
+   during the fadeOut/fadeIn transition, content height can fluctuate
+   (Suspense fallback swap, translateY offset, etc.), which can momentarily
+   trigger the container's overflow-y: auto scrollbar. Suppress it here
+   and let the normal auto behaviour resume once the animation ends. */
+.app-layout__content.page-transition-fadeOut {
+  overflow-y: clip;
+}
+
+.section-fade-in {
+  animation: pageFadeIn 200ms ease forwards;
+}
+
+@media (prefers-reduced-motion: no-preference) and (prefers-reduced-motion: reduce) {
+  .page-transition-fadeIn,
+  .page-transition-fadeOut,
+  .section-fade-in {
+    animation: none;
+  }
+}
+
+/* ── Popover / Dropdown enter animation ── */
+
+@keyframes popoverEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+

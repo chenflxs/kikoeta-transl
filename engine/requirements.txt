@@ -1,0 +1,6 @@
+-r GalTransl/requirements.txt
+# UVR 人声分离
+numpy
+librosa
+soundfile
+onnxruntime-directml

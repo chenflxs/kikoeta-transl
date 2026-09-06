@@ -1,0 +1,73 @@
+# Python caches, test output, and virtual environments
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+env/
+
+# Local configuration and runtime data. These can contain API keys or paths.
+.env
+.env.*
+!.env.example
+engine/data/settings.json
+engine/data/*.log
+engine/work/
+output/
+
+# GalTransl runtime files
+engine/GalTransl/app_settings.json
+engine/GalTransl/GalTransl.log
+engine/GalTransl/error.log
+engine/GalTransl/transl_cache/
+engine/GalTransl/gt_input/
+engine/GalTransl/gt_output/
+
+# Flutter / Dart generated files
+app/.dart_tool/
+app/.dart-check/
+app/.dart-home/
+app/.idea/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/coverage/
+app/analyze_err.txt
+app/analyze_out.txt
+app/windows/flutter/ephemeral/
+
+# Bundled third-party executables and models are obtained separately.
+bin/ffmpeg/**
+!bin/ffmpeg/README.md
+bin/crispasr/**
+!bin/crispasr/README.md
+bin/llama/**
+!bin/llama/README.md
+bin/separate/**
+!bin/separate/README.md
+
+# Build and packaging output
+releases/
+build.py
+start build.bat
+
+# Local editor and operating system files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Reference repositories are for local comparison only.
+参考项目/

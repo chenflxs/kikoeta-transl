@@ -1,0 +1,57 @@
+/* ─────────────────────────────────────────────────────────
+   GalTransl Desktop — Style Entry
+   ─────────────────────────────────────────────────────────
+   This file aggregates all CSS from the styles/ directory.
+   Do not add styles directly here — find the right layer below.
+   ───────────────────────────────────────────────────────── */
+
+/* ── 1. Design tokens ── */
+@import './styles/tokens.css';
+
+/* ── 2. Base resets & element styles ── */
+@import './styles/base.css';
+
+/* ── 3. App layout ── */
+@import './styles/layout.css';
+
+/* ── 4. Shared animations ── */
+@import './styles/animations.css';
+
+/* ── 5. Sidebar ── */
+@import './styles/sidebar.css';
+
+/* ── 6. Shared components ── */
+@import './styles/components/progress-bar.css';
+@import './styles/components/panel.css';
+@import './styles/components/button.css';
+@import './styles/components/field.css';
+@import './styles/components/select.css';
+@import './styles/components/status-badge.css';
+@import './styles/components/meta-grid.css';
+@import './styles/components/inline-alert.css';
+@import './styles/components/job-card.css';
+@import './styles/components/page-state.css';
+@import './styles/components/page-header.css';
+@import './styles/components/stats-grid.css';
+
+/* ── 7. Page styles ── */
+@import './styles/pages/home.css';
+@import './styles/pages/translate.css';
+@import './styles/pages/settings.css';
+@import './styles/pages/prompt-templates.css';
+@import './styles/pages/project-translate.css';
+@import './styles/pages/project-translate-v2.css';
+@import './styles/pages/project-config.css';
+@import './styles/pages/project-dictionary.css';
+@import './styles/pages/project-cache.css';
+@import './styles/pages/project-name.css';
+@import './styles/pages/plugins.css';
+@import './styles/pages/backend-profiles.css';
+@import './styles/pages/plugin-settings.css';
+@import './styles/pages/new-project.css';
+
+/* ── 8. Responsive overrides (must come last) ── */
+@import './styles/responsive.css';
+
+/* ── 9. Custom background overrides (final) ── */
+@import './styles/custom-background.css';

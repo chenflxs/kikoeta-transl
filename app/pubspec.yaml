@@ -1,0 +1,31 @@
+name: kikoeta_transl
+description: Kikoeta 翻译伴侣
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  desktop_drop: ^0.5.0
+  file_picker: ^8.3.7
+  http: ^1.5.0
+  path: ^1.9.1
+  window_manager: ^0.4.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: SarasaUI
+      fonts:
+        - asset: assets/fonts/sarasa-ui-sc-regular.ttf
+        - asset: assets/fonts/sarasa-ui-sc-bold.ttf
+          weight: 700

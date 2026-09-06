@@ -1,0 +1,406 @@
+
+/* ── Backend Profiles Page ── */
+
+.backend-profiles-page {
+  display: flex;
+  flex-direction: column;
+  max-width: 960px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+}
+
+.backend-profiles-page__header {
+  margin-bottom: var(--space-6);
+}
+
+.backend-profiles-page__header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+}
+
+.backend-profiles-page__header p {
+  color: var(--color-text-muted);
+  margin: 0;
+  font-size: 14px;
+}
+
+.backend-profiles-page__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  flex: 1;
+  min-height: 0;
+}
+
+/* List panel: adaptive frame, list scrolls inside */
+.backend-profiles-page__list-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.backend-profiles-page__list-panel > .panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── New-profile dialog ── */
+
+.backend-profiles-page__dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: rgba(16, 24, 40, 0.35);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  animation: bpDialogFadeIn 160ms var(--ease-default, ease-out);
+}
+
+.backend-profiles-page__dialog {
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 20px 50px rgba(16, 24, 40, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  animation: bpDialogPopIn 180ms var(--ease-default, ease-out);
+}
+
+.backend-profiles-page__dialog--wide {
+  max-width: 720px;
+}
+
+.backend-profiles-page__dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.backend-profiles-page__dialog-subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.backend-profiles-page__dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.backend-profiles-page__dialog-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.backend-profiles-page__dialog .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@keyframes bpDialogFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes bpDialogPopIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) and (prefers-reduced-motion: reduce) {
+  .backend-profiles-page__dialog-overlay,
+  .backend-profiles-page__dialog {
+    animation: none;
+  }
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  transition: box-shadow var(--transition-fast);
+}
+
+.profile-card:hover {
+  box-shadow: 0 4px 16px rgba(16, 24, 40, 0.06);
+}
+
+.profile-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.profile-card__name {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.profile-card__badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  line-height: 1;
+}
+
+.profile-card__meta {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.profile-card__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ── Backend Type Toggle ── */
+
+.backend-type-toggle {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.toggle-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+}
+
+.toggle-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+/* ── Token List Editor ── */
+
+.token-list {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--color-neutral-soft);
+}
+
+.token-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.token-list__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.token-list__add-btn {
+  font-size: 13px;
+  color: var(--color-primary);
+  background: none;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-control);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.token-list__add-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.token-list__empty {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-4) 0;
+}
+
+.token-entry {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.token-entry:last-child {
+  margin-bottom: 0;
+}
+
+.token-entry__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.token-entry__index {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.token-entry__remove-btn {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background var(--transition-fast);
+}
+
+.token-entry__remove-btn:hover {
+  background: var(--color-danger-soft);
+}
+
+.field--inline {
+  margin-bottom: var(--space-2);
+}
+
+.field--inline:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Model name + fetch-list button row ── */
+
+.model-name-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.model-name-row__input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Combobox-style input + arrow + dropdown panel */
+.model-name-combo {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.model-name-combo__input {
+  width: 100%;
+  min-width: 0;
+  padding-right: 32px; /* reserve space for arrow when present */
+}
+
+.model-name-combo__arrow {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color var(--transition-fast), background-color var(--transition-fast), transform var(--dur-fast) var(--ease-spring);
+}
+
+.model-name-combo__arrow:hover {
+  color: var(--color-primary);
+  background-color: var(--color-neutral-soft);
+}
+
+.model-name-combo--open .model-name-combo__arrow {
+  color: var(--color-primary);
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* Reuse .custom-select__panel look; only adjust positioning. */
+.model-name-combo__panel {
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+}
+
+.model-name-row__fetch-btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-3);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.model-name-row__fetch-btn:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.model-name-row__fetch-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.field__hint--error {
+  color: var(--color-danger);
+}

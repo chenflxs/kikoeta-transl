@@ -1,0 +1,432 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+
+class EngineClient {
+  EngineClient({this.baseUrl = 'http://127.0.0.1:18765'});
+
+  String baseUrl;
+  Process? _process;
+  static const int port = 18765;
+
+  Uri _uri(String path, [Map<String, String>? query]) =>
+      Uri.parse('$baseUrl$path').replace(queryParameters: query);
+
+  Future<bool> health() async {
+    try {
+      final res = await http
+          .get(_uri('/api/health'))
+          .timeout(const Duration(seconds: 2));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> ensureStarted() async {
+    if (await health()) {
+      if (await _toolsReachable() && await _serviceReachable()) return true;
+      await _freePort();
+    } else {
+      await _freePort();
+    }
+    final python = _python();
+    final server = _serverPath();
+    if (python == null || server == null) return false;
+    final engineDir = p.dirname(server);
+    final rootDir = p.dirname(engineDir);
+    final pathExtra = [
+      p.join(rootDir, 'bin', 'ffmpeg', 'bin'),
+      p.join(rootDir, 'bin', 'ffmpeg'),
+      p.join(rootDir, 'bin', 'crispasr'),
+    ].join(Platform.isWindows ? ';' : ':');
+    final env = Map<String, String>.from(Platform.environment);
+    final currentPath = env['PATH'] ?? env['Path'] ?? '';
+    env['PATH'] = '$pathExtra${Platform.isWindows ? ';' : ':'}$currentPath';
+    env['Path'] = env['PATH']!;
+    _process = await Process.start(
+      python,
+      [server, '--host', '127.0.0.1', '--port', '$port'],
+      workingDirectory: engineDir,
+      environment: env,
+      mode: ProcessStartMode.detachedWithStdio,
+    );
+    for (var i = 0; i < 30; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (await health()) return true;
+    }
+    return false;
+  }
+
+  Future<bool> restart() async {
+    try {
+      _process?.kill();
+    } catch (_) {}
+    _process = null;
+    await _freePort();
+    return ensureStarted();
+  }
+
+  Future<bool> _toolsReachable() async {
+    try {
+      final res = await http
+          .get(_uri('/api/tools'))
+          .timeout(const Duration(seconds: 4));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _serviceReachable() async {
+    try {
+      final uri = Uri.parse('http://127.0.0.1:2370/api/v1/health');
+      final res = await http.get(uri).timeout(const Duration(seconds: 2));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _freePort() async {
+    if (!Platform.isWindows) return;
+    try {
+      final result = await Process.run('netstat', [
+        '-ano',
+        '-p',
+        'tcp',
+      ], runInShell: true);
+      final re = RegExp(
+        r'(?:127\.0\.0\.1|0\.0\.0\.0):(18765|2370)\s+\S+\s+\S+\s+LISTENING\s+(\d+)',
+        caseSensitive: false,
+      );
+      final pids = <String>{};
+      for (final match in re.allMatches(result.stdout.toString())) {
+        final pid = match.group(2);
+        if (pid != null && pid != '0') pids.add(pid);
+      }
+      for (final pid in pids) {
+        await Process.run('taskkill', ['/F', '/PID', pid], runInShell: true);
+      }
+    } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>> settings() async => _get('/api/settings');
+
+  Future<Map<String, dynamic>> saveSettings(Map<String, dynamic> body) async {
+    final res = await http
+        .put(
+          _uri('/api/settings'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 10));
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> tools() async {
+    try {
+      final remote = await _get('/api/tools');
+      if (_hasTools(remote)) return remote;
+    } catch (_) {}
+    return scanBundled();
+  }
+
+  Future<List<String>> listOpenAiModels({
+    required String baseUrl,
+    String apiKey = '',
+    String kind = '',
+  }) async {
+    final res = await http
+        .post(
+          _uri('/api/models/openai'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({
+            'base_url': baseUrl,
+            'api_key': apiKey,
+            'kind': kind,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    final data = _decode(res);
+    final error = data['error']?.toString();
+    if (error != null && error.isNotEmpty) {
+      throw Exception(error);
+    }
+    final models = data['models'];
+    if (models is! List) return const [];
+    return [
+      for (final item in models)
+        if ('$item'.trim().isNotEmpty) '$item'.trim(),
+    ];
+  }
+
+  Future<Map<String, dynamic>> createJob({
+    required List<String> files,
+    required bool enableUvr,
+    required bool enableCorrect,
+    required bool enableTranslate,
+  }) async {
+    final res = await http.post(
+      _uri('/api/jobs'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({
+        'files': files,
+        'flags': {
+          'enable_uvr': enableUvr,
+          'enable_correct': enableCorrect,
+          'enable_translate': enableTranslate,
+        },
+      }),
+    );
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> job(String id) async => _get('/api/jobs/$id');
+
+  Future<Map<String, dynamic>> events(String id, int after) async =>
+      _get('/api/jobs/$id/events', {'after': '$after'});
+
+  Future<void> cancel(String id) async {
+    await http.post(_uri('/api/jobs/$id/cancel'));
+  }
+
+  Future<Map<String, dynamic>> _get(
+    String path, [
+    Map<String, String>? query,
+  ]) async {
+    final res = await http
+        .get(_uri(path, query))
+        .timeout(const Duration(seconds: 8));
+    return _decode(res);
+  }
+
+  Map<String, dynamic> _decode(http.Response res) {
+    final data = jsonDecode(utf8.decode(res.bodyBytes));
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return {'data': data};
+  }
+
+  bool _hasTools(Map<String, dynamic> payload) {
+    final asr = payload['asr'];
+    final dicts = payload['gt_dicts'];
+    final ffmpeg = payload['ffmpeg']?.toString() ?? '';
+    final models = asr is Map ? asr['models'] : null;
+    return ffmpeg.isNotEmpty ||
+        (models is List && models.isNotEmpty) ||
+        (dicts is List && dicts.isNotEmpty);
+  }
+
+  Map<String, dynamic> scanBundled() {
+    final root = _repoRoot();
+    final ffmpegDir = Directory(p.join(root, 'bin', 'ffmpeg'));
+    final asrDir = Directory(p.join(root, 'bin', 'crispasr'));
+    final dictDir = Directory(p.join(root, 'engine', 'GalTransl', 'Dict'));
+    final separateDir = Directory(p.join(root, 'bin', 'separate'));
+    final ffmpeg = _firstFile([
+      p.join(ffmpegDir.path, 'bin', 'ffmpeg.exe'),
+      p.join(ffmpegDir.path, 'ffmpeg.exe'),
+      p.join(root, 'bin', 'ffmpeg.exe'),
+    ]);
+    final ffprobeCandidates = <String>[
+      p.join(ffmpegDir.path, 'bin', 'ffprobe.exe'),
+      p.join(ffmpegDir.path, 'ffprobe.exe'),
+    ];
+    if (ffmpeg != null) {
+      ffprobeCandidates.add(p.join(p.dirname(ffmpeg), 'ffprobe.exe'));
+    }
+    final ffprobe = _firstFile(ffprobeCandidates);
+    final asrExe = _firstFile([
+      p.join(asrDir.path, 'crispasr.exe'),
+      p.join(asrDir.path, 'crispasr'),
+    ]);
+    final ggufs = _listNames(asrDir, '.gguf');
+    final models = [
+      for (final name in ggufs)
+        if (!name.toLowerCase().contains('aligner') &&
+            !name.toLowerCase().contains('alignment'))
+          name,
+    ];
+    final aligners = [
+      for (final name in ggufs)
+        if (name.toLowerCase().contains('aligner') ||
+            name.toLowerCase().contains('alignment'))
+          name,
+    ];
+    final dicts = <Map<String, dynamic>>[];
+    if (dictDir.existsSync()) {
+      final files = dictDir
+          .listSync()
+          .whereType<File>()
+          .where((item) => item.path.toLowerCase().endsWith('.txt'))
+          .toList();
+      files.sort((a, b) => p.basename(a.path).compareTo(p.basename(b.path)));
+      for (final file in files) {
+        final name = p.basename(file.path);
+        var count = 0;
+        try {
+          count = file
+              .readAsLinesSync(encoding: utf8)
+              .where(
+                (line) =>
+                    line.trim().isNotEmpty &&
+                    !line.startsWith(r'\\') &&
+                    !line.startsWith('//'),
+              )
+              .length;
+        } catch (_) {}
+        final lower = name.toLowerCase();
+        String category = 'pre';
+        if (lower.contains('gpt')) {
+          category = 'gpt';
+        } else if (name.contains('译后') || lower.contains('post')) {
+          category = 'post';
+        }
+        dicts.add({
+          'name': name,
+          'path': file.path,
+          'category': category,
+          'count': count,
+        });
+      }
+    }
+    return {
+      'ffmpeg': ffmpeg ?? '',
+      'ffprobe': ffprobe ?? '',
+      'ffmpeg_error': ffmpeg == null
+          ? '未找到 ffmpeg。请将 ffmpeg.exe 放到 bin/ffmpeg/bin'
+          : '',
+      'asr': {
+        'dir': asrDir.path,
+        'models': models,
+        'aligners': aligners,
+        'executable': asrExe ?? '',
+        'backends': const [
+          'whisper',
+          'parakeet',
+          'canary',
+          'cohere',
+          'qwen3',
+          'qwen3-1.7b',
+          'mega-asr',
+          'voxtral',
+          'voxtral4b',
+          'granite',
+        ],
+      },
+      'uvr_models': _listNames(separateDir, '.onnx'),
+      'dict_dir': dictDir.path,
+      'gt_dicts': dicts,
+      'source_langs': const [
+        {'id': 'ja', 'label': 'ja · 日本語'},
+        {'id': 'en', 'label': 'en · English'},
+        {'id': 'zh', 'label': 'zh · 中文'},
+        {'id': 'ko', 'label': 'ko · 한국어'},
+        {'id': 'ru', 'label': 'ru · русский'},
+        {'id': 'fr', 'label': 'fr · Français'},
+        {'id': 'auto', 'label': 'auto · 自动检测'},
+      ],
+      'target_langs': const [
+        {'id': 'zh-cn', 'label': 'zh-cn · 简体中文'},
+        {'id': 'zh-tw', 'label': 'zh-tw · 繁體中文'},
+        {'id': 'en', 'label': 'en · English'},
+        {'id': 'ja', 'label': 'ja · 日本語'},
+        {'id': 'ko', 'label': 'ko · 한국어'},
+        {'id': 'ru', 'label': 'ru · русский'},
+        {'id': 'fr', 'label': 'fr · Français'},
+      ],
+      'translators': const [
+        {'id': 'ForGal-json', 'label': 'ForGal-json · Gal JSON'},
+        {'id': 'ForNovel', 'label': 'ForNovel · 小说 / 其他文本'},
+        {'id': 'ForGal-tsv', 'label': 'ForGal-tsv · Gal TSV'},
+        {'id': 'galtransl-v3', 'label': 'galtransl-v3 · Sakura 接口'},
+        {'id': 'sakura-v1.0', 'label': 'sakura-v1.0 · Sakura 接口'},
+      ],
+    };
+  }
+
+  List<String> _listNames(Directory dir, String ext) {
+    if (!dir.existsSync()) return <String>[];
+    final names = dir
+        .listSync()
+        .whereType<File>()
+        .map((item) => p.basename(item.path))
+        .where((name) => name.toLowerCase().endsWith(ext))
+        .toList();
+    names.sort();
+    return names;
+  }
+
+  bool get hasRepo => _serverPath() != null;
+
+  String _repoRoot() {
+    final server = _serverPath();
+    if (server != null) return p.dirname(p.dirname(server));
+    final seeds = [
+      Directory.current.path,
+      File(Platform.resolvedExecutable).parent.path,
+    ];
+    for (final seed in seeds) {
+      var dir = Directory(seed);
+      for (var i = 0; i < 8; i++) {
+        if (Directory(p.join(dir.path, 'bin', 'crispasr')).existsSync() ||
+            File(p.join(dir.path, 'engine', 'server.py')).existsSync()) {
+          return dir.path;
+        }
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+    }
+    return Directory.current.path;
+  }
+
+  String? _firstFile(List<String> paths) {
+    for (final item in paths) {
+      if (File(item).existsSync()) return File(item).absolute.path;
+    }
+    return null;
+  }
+
+  String? _python() {
+    for (final name in ['python', 'python3', 'py']) {
+      final result = Process.runSync(Platform.isWindows ? 'where' : 'which', [
+        name,
+      ], runInShell: true);
+      if (result.exitCode == 0) {
+        final line = result.stdout
+            .toString()
+            .split(RegExp(r'\r?\n'))
+            .first
+            .trim();
+        if (line.isNotEmpty) return line;
+      }
+    }
+    return null;
+  }
+
+  String? _serverPath() {
+    final seeds = [
+      Directory.current.path,
+      File(Platform.resolvedExecutable).parent.path,
+    ];
+    for (final seed in seeds) {
+      var dir = Directory(seed);
+      for (var i = 0; i < 8; i++) {
+        final nested = File(p.join(dir.path, 'engine', 'server.py'));
+        if (nested.existsSync()) return nested.absolute.path;
+        if (p.basename(dir.path).toLowerCase() == 'engine') {
+          final direct = File(p.join(dir.path, 'server.py'));
+          if (direct.existsSync()) return direct.absolute.path;
+        }
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+    }
+    return null;
+  }
+}

@@ -33,19 +33,19 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       text: _text(correct['temperature'], '0.2'),
     );
     correctMaxTokens = TextEditingController(
-      text: _text(correct['max_tokens'], '0'),
+      text: _text(correct['max_tokens'], '1024'),
     );
     translatePrompt = TextEditingController(
       text: '${translate['prompt'] ?? ''}',
     );
     contextNum = TextEditingController(
-      text: _text(translate['context_num'], '8'),
+      text: _text(translate['context_num'], '10'),
     );
     batchSize = TextEditingController(
-      text: _text(translate['batch_size'], '16'),
+      text: _text(translate['batch_size'], '10'),
     );
     tokenLimit = TextEditingController(
-      text: _text(translate['token_limit'], '0'),
+      text: _text(translate['token_limit'], '1024'),
     );
     promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
         ? 'overwrite'
@@ -63,11 +63,11 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     setState(() {
       correctPrompt.text = '${correct['prompt'] ?? ''}';
       correctTemperature.text = _text(correct['temperature'], '0.2');
-      correctMaxTokens.text = _text(correct['max_tokens'], '0');
+      correctMaxTokens.text = _text(correct['max_tokens'], '1024');
       translatePrompt.text = '${translate['prompt'] ?? ''}';
-      contextNum.text = _text(translate['context_num'], '8');
-      batchSize.text = _text(translate['batch_size'], '16');
-      tokenLimit.text = _text(translate['token_limit'], '0');
+      contextNum.text = _text(translate['context_num'], '10');
+      batchSize.text = _text(translate['batch_size'], '10');
+      tokenLimit.text = _text(translate['token_limit'], '1024');
       promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
           ? 'overwrite'
           : 'append';
@@ -103,15 +103,15 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       ...(next['correct'] as Map? ?? {}),
       'prompt': correctPrompt.text,
       'temperature': _double(correctTemperature.text, 0.2),
-      'max_tokens': _int(correctMaxTokens.text, 0),
+      'max_tokens': _int(correctMaxTokens.text, 1024),
     };
     next['translate'] = {
       ...(next['translate'] as Map? ?? {}),
       'prompt_mode': promptMode,
       'prompt': translatePrompt.text,
-      'context_num': _int(contextNum.text, 8),
-      'batch_size': _int(batchSize.text, 16),
-      'token_limit': _int(tokenLimit.text, 0),
+      'context_num': _int(contextNum.text, 10),
+      'batch_size': _int(batchSize.text, 10),
+      'token_limit': _int(tokenLimit.text, 1024),
     };
     await widget.app.persistSettings(next);
     if (mounted) {
@@ -153,7 +153,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
             KtField(
               controller: correctMaxTokens,
               label: 'max_tokens',
-              hint: '0 表示不限制',
+              hint: '1024',
               maxLines: 1,
             ),
           ],
@@ -175,9 +175,9 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
               hint: '留空则不修改默认提示词',
               maxLines: 8,
             ),
-            KtField(controller: contextNum, label: '上下文句数', hint: '8'),
-            KtField(controller: batchSize, label: '单次翻译句数', hint: '16'),
-            KtField(controller: tokenLimit, label: 'Token 上限', hint: '0 表示不限制'),
+            KtField(controller: contextNum, label: '上下文句数', hint: '10'),
+            KtField(controller: batchSize, label: '单次翻译句数', hint: '10'),
+            KtField(controller: tokenLimit, label: 'Token 上限', hint: '1024'),
           ],
         ),
         const SizedBox(height: 14),

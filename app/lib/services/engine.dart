@@ -10,6 +10,7 @@ class EngineClient {
 
   String baseUrl;
   Process? _process;
+  String? startupError;
   static const int port = 18765;
 
   Uri _uri(String path, [Map<String, String>? query]) =>
@@ -27,15 +28,21 @@ class EngineClient {
   }
 
   Future<bool> ensureStarted() async {
+    startupError = null;
     if (await health()) {
-      if (await _toolsReachable() && await _serviceReachable()) return true;
-      await _freePort();
-    } else {
-      await _freePort();
+      return true;
     }
+    await _freeEnginePort();
     final python = _python();
     final server = _serverPath();
-    if (python == null || server == null) return false;
+    if (python == null) {
+      startupError = '未找到可用的 Python 3 解释器';
+      return false;
+    }
+    if (server == null) {
+      startupError = '未找到 engine/server.py';
+      return false;
+    }
     final engineDir = p.dirname(server);
     final rootDir = p.dirname(engineDir);
     final pathExtra = [
@@ -47,17 +54,25 @@ class EngineClient {
     final currentPath = env['PATH'] ?? env['Path'] ?? '';
     env['PATH'] = '$pathExtra${Platform.isWindows ? ';' : ':'}$currentPath';
     env['Path'] = env['PATH']!;
-    _process = await Process.start(
-      python,
-      [server, '--host', '127.0.0.1', '--port', '$port'],
-      workingDirectory: engineDir,
-      environment: env,
-      mode: ProcessStartMode.detachedWithStdio,
-    );
+    try {
+      _process = await Process.start(
+        python,
+        [server, '--host', '127.0.0.1', '--port', '$port'],
+        workingDirectory: engineDir,
+        environment: env,
+        mode: ProcessStartMode.detachedWithStdio,
+      );
+      _watchProcess(_process!);
+    } on ProcessException catch (error) {
+      startupError = '无法启动 Python：${error.message}';
+      return false;
+    }
     for (var i = 0; i < 30; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       if (await health()) return true;
+      if (_process == null) return false;
     }
+    startupError ??= '等待 engine 响应超时';
     return false;
   }
 
@@ -66,32 +81,11 @@ class EngineClient {
       _process?.kill();
     } catch (_) {}
     _process = null;
-    await _freePort();
+    await _freeEnginePort();
     return ensureStarted();
   }
 
-  Future<bool> _toolsReachable() async {
-    try {
-      final res = await http
-          .get(_uri('/api/tools'))
-          .timeout(const Duration(seconds: 4));
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> _serviceReachable() async {
-    try {
-      final uri = Uri.parse('http://127.0.0.1:2370/api/v1/health');
-      final res = await http.get(uri).timeout(const Duration(seconds: 2));
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<void> _freePort() async {
+  Future<void> _freeEnginePort() async {
     if (!Platform.isWindows) return;
     try {
       final result = await Process.run('netstat', [
@@ -100,18 +94,32 @@ class EngineClient {
         'tcp',
       ], runInShell: true);
       final re = RegExp(
-        r'(?:127\.0\.0\.1|0\.0\.0\.0):(18765|2370)\s+\S+\s+\S+\s+LISTENING\s+(\d+)',
+        r'^\s*TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0):18765\s+\S+\s+LISTENING\s+(\d+)\s*$',
         caseSensitive: false,
+        multiLine: true,
       );
       final pids = <String>{};
       for (final match in re.allMatches(result.stdout.toString())) {
-        final pid = match.group(2);
+        final pid = match.group(1);
         if (pid != null && pid != '0') pids.add(pid);
       }
       for (final pid in pids) {
         await Process.run('taskkill', ['/F', '/PID', pid], runInShell: true);
       }
     } catch (_) {}
+  }
+
+  void _watchProcess(Process process) {
+    final output = StringBuffer();
+    process.stderr.transform(utf8.decoder).listen(output.write);
+    process.exitCode.then((code) {
+      if (!identical(_process, process)) return;
+      _process = null;
+      final detail = output.toString().trim();
+      startupError = detail.isEmpty
+          ? 'engine 已退出（退出码 $code）'
+          : 'engine 已退出：$detail';
+    });
   }
 
   Future<Map<String, dynamic>> settings() async => _get('/api/settings');
@@ -393,17 +401,13 @@ class EngineClient {
 
   String? _python() {
     for (final name in ['python', 'python3', 'py']) {
-      final result = Process.runSync(Platform.isWindows ? 'where' : 'which', [
-        name,
-      ], runInShell: true);
-      if (result.exitCode == 0) {
-        final line = result.stdout
-            .toString()
-            .split(RegExp(r'\r?\n'))
-            .first
-            .trim();
-        if (line.isNotEmpty) return line;
-      }
+      try {
+        final result = Process.runSync(name, [
+          '-c',
+          'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)',
+        ], runInShell: true);
+        if (result.exitCode == 0) return name;
+      } on ProcessException catch (_) {}
     }
     return null;
   }

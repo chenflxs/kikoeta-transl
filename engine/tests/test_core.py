@@ -107,15 +107,16 @@ class AsrCommandTests(unittest.TestCase):
             output_file=Path("out"),
             settings=AppSettings(),
         )
-        self.assertEqual(command[0], "crispasr.exe")
-        self.assertIn("--vad", command)
-        self.assertIn("6", command)
-        self.assertIn("300", command)
-        self.assertIn("224", command)
-        self.assertIn("0.0", command)
-        self.assertIn("0.5", command)
-        self.assertIn("--split-on-punct", command)
-        self.assertIn("--vad-model", command)
+        self.assertEqual(command, [
+            "crispasr.exe", "--backend", "qwen3-1.7b", "--model", "model.gguf",
+            "--aligner-model", "aligner.gguf", "--force-aligner", "--language", "ja",
+            "--output-srt", "--output-file", "out", "--file", "in.wav", "--vad",
+            "--vad-model", "firered", "--vad-threshold", "0.5",
+            "--vad-max-speech-duration-s", "6", "--vad-min-silence-duration-ms", "300",
+            "--max-new-tokens", "224", "--frequency-penalty", "0.0",
+            "--repetition-penalty", "1.0", "--condition-on-previous-text", "True",
+            "--temperature", "0.0", "--split-on-punct",
+        ])
 
     def test_command_respects_fields_and_extra_args(self):
         from kt.models import AppSettings, AsrSettings
@@ -177,8 +178,14 @@ class SettingsParseTests(unittest.TestCase):
         self.assertEqual(settings.output.directory, "")
         self.assertTrue(settings.asr.enable_vad)
         self.assertEqual(settings.asr.max_new_tokens, 224)
+        self.assertEqual(settings.asr.repetition_penalty, 1.0)
+        self.assertTrue(settings.asr.condition_on_previous_text)
         self.assertEqual(settings.asr.temperature, 0.0)
         self.assertTrue(settings.asr.split_on_punct)
+        self.assertEqual(settings.correct.max_tokens, 1024)
+        self.assertEqual(settings.translate.context_num, 10)
+        self.assertEqual(settings.translate.batch_size, 10)
+        self.assertEqual(settings.translate.token_limit, 1024)
         settings = AppSettings.from_dict({"asr": {"enable_vad": False, "max_new_tokens": "64", "vad_model": "silero"}})
         self.assertFalse(settings.asr.enable_vad)
         self.assertEqual(settings.asr.max_new_tokens, 64)
@@ -202,6 +209,24 @@ class SettingsParseTests(unittest.TestCase):
         self.assertEqual(settings.translate.prompt_mode, "overwrite")
         self.assertEqual(settings.translate.context_num, 4)
         self.assertEqual(settings.translate.batch_size, 12)
+
+
+class CorrectionTests(unittest.TestCase):
+    def test_correction_requires_unchanged_srt_structure(self):
+        from kt.models import Cue
+        from kt.stages.correct import _extract_corrected_messages
+
+        source = [Cue(start=1.0, end=2.5, message="こんにちは")]
+        self.assertEqual(
+            _extract_corrected_messages(
+                "1\n00:00:01,000 --> 00:00:02,500\nこんばんは\n", source
+            ),
+            ["こんばんは"],
+        )
+        with self.assertRaisesRegex(RuntimeError, "时间轴"):
+            _extract_corrected_messages(
+                "1\n00:00:01,001 --> 00:00:02,500\nこんばんは\n", source
+            )
 
     def test_translation_prompt_modes_are_written_for_gt(self):
         import yaml

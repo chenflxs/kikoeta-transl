@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# kikoeta-transl
-=======
 # Kikoeta Transl
 
 面向 [kikoeta](https://github.com/chenflxs/kikoeta) 的 Windows 桌面翻译伴侣。它将音视频或未翻译的字幕/歌词处理为可供 kikoeta 歌词库使用的时间轴字幕，支持 `.lrc`、`.srt` 与 `.vtt`。
@@ -129,4 +126,3 @@ build.py             Windows 发布构建脚本
 ## 许可
 
 本项目采用 [GPL-3.0](LICENSE) 许可。仓库内置的 GalTransl 及其第三方组件仍受各自许可证约束；发布或再分发前请一并阅读随附许可证。
->>>>>>> f4d8c78 (Add translated content across project files)

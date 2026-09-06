@@ -18,7 +18,8 @@ DEFAULT_ASR_TEMPLATE = (
     "--output-srt --output-file $output_file --file $input_file --vad "
     "--vad-model firered --vad-threshold 0.5 --vad-max-speech-duration-s 6 "
     "--vad-min-silence-duration-ms 300 --max-new-tokens 224 "
-    "--frequency-penalty 0.0 --temperature 0.0 --split-on-punct"
+    "--frequency-penalty 0.0 --repetition-penalty 1.0 "
+    "--condition-on-previous-text True --temperature 0.0 --split-on-punct"
 )
 
 
@@ -144,52 +145,13 @@ def _command_from_settings(
         command.extend(["--prompt", asr.prompt.strip()])
     command.extend(
         [
-            "--threads", str(int(asr.threads)),
-            "--processors", str(int(asr.processors)),
-            "--offset-t", str(int(asr.offset_t)),
-            "--offset-n", str(int(asr.offset_n)),
-            "--duration", str(int(asr.duration)),
-            "--max-context", str(int(asr.max_context)),
-            "--max-len", str(int(asr.max_len)),
             "--max-new-tokens", str(int(asr.max_new_tokens)),
             "--frequency-penalty", _fmt_num(asr.frequency_penalty),
+            "--repetition-penalty", _fmt_decimal(asr.repetition_penalty),
+            "--condition-on-previous-text", str(asr.condition_on_previous_text),
             "--temperature", _fmt_num(asr.temperature),
-            "--best-of", str(int(asr.best_of)),
-            "--beam-size", asr.beam_size or "greedy",
-            "--audio-ctx", str(int(asr.audio_ctx)),
-            "--word-thold", _fmt_num(asr.word_thold),
-            "--entropy-thold", _fmt_num(asr.entropy_thold),
-            "--logprob-thold", _fmt_num(asr.logprob_thold),
-            "--no-speech-thold", _fmt_num(asr.no_speech_thold),
-            "--sensitivity", asr.sensitivity or "balanced",
-            "--seed", str(int(asr.seed)),
-            "--temperature-inc", _fmt_num(asr.temperature_inc),
-            "--chunk-seconds", str(int(asr.chunk_seconds)),
-            "--chunk-overlap", _fmt_num(asr.chunk_overlap),
         ]
     )
-    if asr.hotwords.strip():
-        command.extend(["--hotwords", asr.hotwords.strip()])
-    if asr.split_on_word:
-        command.append("--split-on-word")
-    if asr.no_fallback:
-        command.append("--no-fallback")
-    if asr.no_punctuation:
-        command.append("--no-punctuation")
-    if asr.punc_model.strip():
-        command.extend(["--punc-model", asr.punc_model.strip()])
-    if asr.truecase_model.strip():
-        command.extend(["--truecase-model", asr.truecase_model.strip()])
-    if asr.flush_after:
-        command.extend(["--flush-after", str(int(asr.flush_after))])
-    if asr.no_gpu:
-        command.append("--no-gpu")
-    else:
-        command.extend(["--device", str(int(asr.device)), "--gpu-backend", asr.gpu_backend or "auto"])
-    if asr.flash_attn:
-        command.append("--flash-attn")
-    else:
-        command.append("--no-flash-attn")
     if asr.split_on_punct:
         command.append("--split-on-punct")
     return command
@@ -244,3 +206,8 @@ def _fmt_num(value: float | int) -> str:
     if number.is_integer():
         return str(int(number))
     return format(number, ".8g")
+
+
+def _fmt_decimal(value: float | int) -> str:
+    formatted = format(float(value), ".8g")
+    return formatted if "." in formatted or "e" in formatted.lower() else f"{formatted}.0"

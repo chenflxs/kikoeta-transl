@@ -30,7 +30,7 @@ class AppState extends ChangeNotifier {
     engineOnline = await engine.ensureStarted();
     engineMessage = engineOnline
         ? 'engine 已连接'
-        : '未能启动 engine，请手动运行 python engine/server.py';
+        : '${engine.startupError ?? '未能启动 engine'}，请手动运行 python engine/server.py';
     if (engineOnline) {
       await reload();
     }
@@ -122,7 +122,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     engineOnline = await engine.restart();
     if (engineOnline) await reload();
-    engineMessage = engineOnline ? 'engine 已连接' : '未能启动 engine';
+    engineMessage = engineOnline
+        ? 'engine 已连接'
+        : engine.startupError ?? '未能启动 engine';
     notifyListeners();
   }
 

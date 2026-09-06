@@ -114,6 +114,8 @@ class AsrSettings:
     vad_min_silence_duration_ms: int = 300
     max_new_tokens: int = 224
     frequency_penalty: float = 0.0
+    repetition_penalty: float = 1.0
+    condition_on_previous_text: bool = True
     temperature: float = 0.0
     split_on_punct: bool = True
     vad_model: str = "firered"
@@ -135,7 +137,7 @@ class CorrectionSettings:
     api_key: str = ""
     prompt: str = ""
     temperature: float = 0.2
-    max_tokens: int = 0
+    max_tokens: int = 1024
 
 
 @dataclass
@@ -146,9 +148,9 @@ class TranslateSettings:
     sakura_model: str = ""
     prompt_mode: str = "append"
     prompt: str = ""
-    context_num: int = 8
-    batch_size: int = 16
-    token_limit: int = 0
+    context_num: int = 10
+    batch_size: int = 10
+    token_limit: int = 1024
 
 
 OUTPUT_PRESETS = ("target_lrc", "target_srt", "bilingual_lrc", "bilingual_srt")
@@ -251,7 +253,7 @@ class AppSettings:
                 api_key=str(correct.get("api_key") or ""),
                 prompt=str(correct.get("prompt") or ""),
                 temperature=_as_float(correct.get("temperature"), 0.2),
-                max_tokens=_as_int(correct.get("max_tokens"), 0),
+                max_tokens=_as_int(correct.get("max_tokens"), 1024),
             ),
             translate=TranslateSettings(
                 translator=str(translate.get("translator") or "ForGal-json"),
@@ -264,9 +266,9 @@ class AppSettings:
                 sakura_model=str(translate.get("sakura_model") or ""),
                 prompt_mode=_normalize_prompt_mode(translate.get("prompt_mode")),
                 prompt=str(translate.get("prompt") or ""),
-                context_num=_as_int(translate.get("context_num"), 8),
-                batch_size=_as_int(translate.get("batch_size"), 16),
-                token_limit=_as_int(translate.get("token_limit"), 0),
+                context_num=_as_int(translate.get("context_num"), 10),
+                batch_size=_as_int(translate.get("batch_size"), 10),
+                token_limit=_as_int(translate.get("token_limit"), 1024),
             ),
             output=_output_from_dict(output, formats),
             dict_pre=str(raw.get("dict_pre") or ""),
@@ -339,6 +341,8 @@ def _asr_from_dict(asr: dict[str, Any], source_lang: str) -> AsrSettings:
         vad_min_silence_duration_ms=_as_int(asr.get("vad_min_silence_duration_ms"), 300),
         max_new_tokens=_as_int(asr.get("max_new_tokens"), 224),
         frequency_penalty=_as_float(asr.get("frequency_penalty"), 0.0),
+        repetition_penalty=_as_float(asr.get("repetition_penalty"), 1.0),
+        condition_on_previous_text=_as_bool(asr.get("condition_on_previous_text"), True),
         temperature=_as_float(asr.get("temperature"), 0.0),
         split_on_punct=_as_bool(asr.get("split_on_punct"), True),
         vad_model=str(asr.get("vad_model") or "firered"),

@@ -116,7 +116,7 @@ def list_crispasr_backends(settings: AppSettings | None = None) -> list[str]:
             **popen_kwargs(),
         )
         payload = json.loads(result.stdout or "{}")
-        non_asr_caps = {"tts", "s2s", "separate", "pitch", "chords", "beats", "tab", "piano"}
+        non_asr_caps = {"tts", "s2s", "pitch", "chords", "beats", "tab", "piano"}
         asr_caps = {
             "timestamps-native",
             "timestamps-ctc",

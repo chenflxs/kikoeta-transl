@@ -6,7 +6,6 @@ from typing import Any, Literal
 StageName = Literal[
     "queued",
     "transcoding",
-    "separating",
     "asr",
     "correcting",
     "translating",

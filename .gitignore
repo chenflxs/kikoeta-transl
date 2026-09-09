@@ -51,8 +51,6 @@ bin/crispasr/**
 !bin/crispasr/README.md
 bin/llama/**
 !bin/llama/README.md
-bin/separate/**
-!bin/separate/README.md
 
 # Build and packaging output
 releases/

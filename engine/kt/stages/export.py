@@ -26,14 +26,18 @@ def export_cues(
     )
     fmt = preset_format(preset)
     bilingual = preset_bilingual(preset)
-    dest = output_dir / f"{stem}.{fmt}"
+    suffix = str(settings.output.suffix or "").strip()
+    if suffix and not suffix.startswith("."):
+        suffix = "." + suffix
+    output_stem = f"{stem}{suffix}"
+    dest = output_dir / f"{output_stem}.{fmt}"
     if bilingual and src_cues:
         _write_bilingual(dest, src_cues, cues, fmt)
     else:
         _write_file(dest, cues, fmt)
     written = [str(dest)]
     if settings.output.write_kikoeta_lyrics:
-        written.extend(_write_kikoeta(cues, source, settings, stem, [fmt], src_cues if bilingual else None))
+        written.extend(_write_kikoeta(cues, source, settings, output_stem, [fmt], src_cues if bilingual else None))
     return written
 
 

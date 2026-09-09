@@ -36,6 +36,26 @@ def parse_subtitle_text(text: str, suffix: str) -> list[Cue]:
     return _fill_ends(cues)
 
 
+def normalize_cue_timeline(cues: list[Cue]) -> list[Cue]:
+    """Stable millisecond ordering and merging, without mutating input cues."""
+    merged: list[Cue] = []
+    last_key: int | None = None
+    for cue in sorted(cues, key=lambda item: round(item.start * 1000)):
+        key = round(cue.start * 1000)
+        if merged and key == last_key:
+            previous = merged[-1]
+            previous.message = f"{previous.message.rstrip()} {cue.message.lstrip()}"
+            previous.src_message = f"{previous.src_message.rstrip()} {(cue.src_message or cue.message).lstrip()}"
+            previous.end = max(previous.end, cue.end)
+        else:
+            merged.append(Cue(
+                start=cue.start, end=cue.end, message=cue.message,
+                src_message=cue.src_message or cue.message,
+            ))
+            last_key = key
+    return _fill_ends(merged)
+
+
 def extract_work_id(*parts: str) -> str:
     found = ""
     for part in parts:

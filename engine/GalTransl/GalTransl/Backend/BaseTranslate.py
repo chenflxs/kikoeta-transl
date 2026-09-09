@@ -1,5 +1,6 @@
 import asyncio
 import httpx
+import inspect
 from datetime import timedelta
 from opencc import OpenCC
 from typing import Optional, List
@@ -18,7 +19,11 @@ from GalTransl.Cache import save_transCache_to_json
 from GalTransl.Dictionary import CGptDict
 from GalTransl.Utils import load_guideline_file, fix_quotes2
 from openai import RateLimitError, AsyncOpenAI, APIConnectionError, APITimeoutError
-from openai import DefaultAioHttpClient
+
+try:
+    from openai import DefaultAioHttpClient
+except ImportError:  # openai < 1.63 does not expose the helper
+    DefaultAioHttpClient = None
 from openai._types import NOT_GIVEN
 import random
 import time
@@ -38,6 +43,17 @@ _GLOBAL_NEXT_ALLOWED_TS = 0.0
 _CHATBOT_STATE: ContextVar[tuple[bool, str] | None] = ContextVar(
     "galtransl_chatbot_state", default=None
 )
+
+
+async def _save_trans_cache_incremental(trans_list, cache_file_path, project_dir: str) -> None:
+    """Save cache data while tolerating legacy plugin/test callback signatures."""
+    kwargs = {}
+    try:
+        if "project_dir" in inspect.signature(save_transCache_to_json).parameters:
+            kwargs["project_dir"] = project_dir
+    except (TypeError, ValueError):
+        kwargs["project_dir"] = project_dir
+    await save_transCache_to_json(trans_list, cache_file_path, **kwargs)
 
 
 class RequestHealthMetrics:
@@ -186,6 +202,10 @@ class BaseTranslate:
             backend_rpm = 0
         self.global_request_rpm = max(0, backend_rpm)
 
+        backend_config = config.getBackendConfigSection("OpenAI-Compatible")
+        raw_extra_body = backend_config.get("extra_body") or {}
+        self.extra_body = dict(raw_extra_body) if isinstance(raw_extra_body, dict) else {}
+
         if config.getKey("internals.enableProxy") == True:
             self.proxyProvider = proxy_pool
         else:
@@ -219,6 +239,16 @@ class BaseTranslate:
         except (TypeError, ValueError):
             result = default
         return max(1, result)
+
+    @staticmethod
+    def _project_dir(owner) -> str:
+        """Read a project directory without eagerly evaluating fallbacks."""
+        config = getattr(owner, "pj_config", None)
+        runtime_dir = getattr(config, "runtime_project_dir", "")
+        if runtime_dir:
+            return str(runtime_dir)
+        getter = getattr(config, "getProjectDir", None)
+        return str(getter()) if callable(getter) else ""
 
     def _get_effective_num_per_request(self, configured_value: int, proofread: bool = False) -> int:
         configured = self._coerce_positive_int(configured_value, 1)
@@ -390,15 +420,21 @@ class BaseTranslate:
                 "检测到代理配置，当前回退到 DefaultAioHttpClient（pyreqwest transport 路径未启用代理注入）"
             )
 
-        return DefaultAioHttpClient(
-            trust_env=False,
-            limits=httpx.Limits(
+        client_kwargs = {
+            "trust_env": False,
+            "limits": httpx.Limits(
                 max_keepalive_connections=20,
                 max_connections=100,
                 keepalive_expiry=30.0,
             ),
             **proxy_kwargs,
-        )
+        }
+        if DefaultAioHttpClient is not None:
+            return DefaultAioHttpClient(**client_kwargs)
+        # AsyncOpenAI accepts a regular httpx.AsyncClient as well. This keeps
+        # the bundled GalTransl usable with older OpenAI SDKs while retaining
+        # the same proxy, timeout and connection-pool behavior.
+        return httpx.AsyncClient(**client_kwargs)
 
     @staticmethod
     def _is_transport_error(error: BaseException) -> bool:
@@ -516,11 +552,7 @@ class BaseTranslate:
             from GalTransl.server import record_runtime_success
 
             record_runtime_success(
-                getattr(
-                    self.pj_config,
-                    "runtime_project_dir",
-                    self.pj_config.getProjectDir(),
-                ),
+                BaseTranslate._project_dir(self),
                 filename=filename,
                 index=getattr(trans, "runtime_index", getattr(trans, "index", 0)),
                 speaker=getattr(trans, "speaker", None),
@@ -623,14 +655,14 @@ class BaseTranslate:
                 failed_text = translate_failed_prefix + current_tran.post_src
                 current_tran.pre_dst = failed_text
                 current_tran.post_dst = failed_text
-                current_tran.problem = self._merge_problem_message(
+                current_tran.problem = BaseTranslate._merge_problem_message(
                     current_tran.problem, translate_problem_message, append=True
                 )
                 current_tran.trans_by = failed_model_name
             else:
                 current_tran.proofread_zh = current_tran.pre_dst
                 current_tran.post_dst = current_tran.pre_dst
-                current_tran.problem = self._merge_problem_message(
+                current_tran.problem = BaseTranslate._merge_problem_message(
                     current_tran.problem,
                     proofread_problem_message,
                     append=proofread_problem_append,
@@ -674,10 +706,16 @@ class BaseTranslate:
 
         while i < len_trans_list:
             self._check_stop_requested()
-            effective_num_pre_request = self._get_effective_num_per_request(
-                num_pre_request,
-                proofread=proofread,
-            )
+            effective_getter = getattr(self, "_get_effective_num_per_request", None)
+            if callable(effective_getter):
+                effective_num_pre_request = effective_getter(
+                    num_pre_request,
+                    proofread=proofread,
+                )
+            else:
+                effective_num_pre_request = BaseTranslate._coerce_positive_int(
+                    num_pre_request, 1
+                )
             trans_list_split = (
                 translist_unhit[i : i + effective_num_pre_request]
                 if (i + effective_num_pre_request < len_trans_list)
@@ -711,11 +749,7 @@ class BaseTranslate:
                     from GalTransl.server import record_runtime_error
 
                     record_runtime_error(
-                        getattr(
-                            self.pj_config,
-                            "runtime_project_dir",
-                            self.pj_config.getProjectDir(),
-                        ),
+                        BaseTranslate._project_dir(self),
                         kind="api",
                         message=str(exc),
                         filename=filename,
@@ -791,13 +825,15 @@ class BaseTranslate:
             if num > 0:
                 i += num
             self.pj_config.bar(num)
-            self._update_dynamic_num_per_request(
-                requested_count=len(trans_list_split),
-                completed_count=max(0, num),
-                trans_result=trans_result,
-                filename=filename,
-                proofread=proofread,
-            )
+            updater = getattr(self, "_update_dynamic_num_per_request", None)
+            if callable(updater):
+                updater(
+                    requested_count=len(trans_list_split),
+                    completed_count=max(0, num),
+                    trans_result=trans_result,
+                    filename=filename,
+                    proofread=proofread,
+                )
 
             result_output = ""
             for trans in trans_result:
@@ -814,14 +850,8 @@ class BaseTranslate:
             trans_result_list += trans_result
             transl_step_count += 1
             if transl_step_count >= self.save_steps:
-                await save_transCache_to_json(
-                    trans_result,
-                    cache_file_path,
-                    project_dir=getattr(
-                        self.pj_config,
-                        "runtime_project_dir",
-                        self.pj_config.getProjectDir(),
-                    ),
+                await _save_trans_cache_incremental(
+                    trans_result, cache_file_path, BaseTranslate._project_dir(self)
                 )
                 transl_step_count = 0
 
@@ -893,7 +923,7 @@ class BaseTranslate:
         if max_retry_count is None:
             max_retry_count = getattr(self, "max_api_retries", None)
         if max_retry_count is not None:
-            max_retry_count = self._coerce_positive_int(max_retry_count, 6)
+            max_retry_count = BaseTranslate._coerce_positive_int(max_retry_count, 6)
 
         # api_try_count controls token rotation and preserves the caller's
         # existing base offset. api_attempts is independent so parse retries
@@ -943,18 +973,21 @@ class BaseTranslate:
                 # Create the API call as a task so we can cancel it if
                 # the user requests a stop while the request is in-flight.
                 LOGGER.info(f"timeout: {self.api_timeout}")
+                request_kwargs = {
+                    "model": token.model_name,
+                    "messages": messages,
+                    "stream": is_stream,
+                    "temperature": temperature,
+                    "frequency_penalty": frequency_penalty,
+                    "max_tokens": max_tokens,
+                    "timeout": self.api_timeout,
+                    "top_p": top_p,
+                    "reasoning_effort": reasoning_effort,
+                }
+                if getattr(self, "extra_body", None):
+                    request_kwargs["extra_body"] = self.extra_body
                 api_task = asyncio.ensure_future(
-                    client.chat.completions.create(
-                        model=token.model_name,
-                        messages=messages,
-                        stream=is_stream,
-                        temperature=temperature,
-                        frequency_penalty=frequency_penalty,
-                        max_tokens=max_tokens,
-                        timeout=self.api_timeout,
-                        top_p=top_p,
-                        reasoning_effort=reasoning_effort,
-                    )
+                    client.chat.completions.create(**request_kwargs)
                 )
 
                 # Poll stop_event while waiting for the API response.
@@ -1143,7 +1176,7 @@ class BaseTranslate:
                     try:
                         from GalTransl.server import record_runtime_error
                         record_runtime_error(
-                            getattr(self.pj_config, "runtime_project_dir", self.pj_config.getProjectDir()),
+                            BaseTranslate._project_dir(self),
                             kind="api",
                             message=message_text,
                             filename=raw_file_name,
@@ -1261,14 +1294,8 @@ class BaseTranslate:
             trans_result_list += trans_result
             transl_step_count += 1
             if transl_step_count >= self.save_steps:
-                await save_transCache_to_json(
-                    trans_result,
-                    cache_file_path,
-                    project_dir=getattr(
-                        self.pj_config,
-                        "runtime_project_dir",
-                        self.pj_config.getProjectDir(),
-                    ),
+                await _save_trans_cache_incremental(
+                    trans_result, cache_file_path, BaseTranslate._project_dir(self)
                 )
                 transl_step_count = 0
             if should_print_translation_logs(self.pj_config):

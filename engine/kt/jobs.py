@@ -69,6 +69,12 @@ class JobManager:
     def list(self) -> list[Job]:
         return list(self._jobs.values())
 
+    def shutdown(self) -> None:
+        """Request cancellation for all jobs before the engine exits."""
+        for job in self._jobs.values():
+            if job.status in {"queued", "running"}:
+                job.stop_event.set()
+
     def cancel(self, job_id: str) -> Job:
         job = self._jobs.get(job_id)
         if job is None:

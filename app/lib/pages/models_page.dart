@@ -29,6 +29,7 @@ class _ModelsPageState extends State<ModelsPage> {
   bool queryingAsr = false;
   bool queryingCorrect = false;
   bool queryingTranslate = false;
+  bool settingsSynced = false;
 
   @override
   void initState() {
@@ -55,7 +56,9 @@ class _ModelsPageState extends State<ModelsPage> {
     );
     targetLang = TextEditingController(text: '${s['target_lang'] ?? 'zh-cn'}');
     widget.app.addListener(_syncAsrFromTools);
+    widget.app.addListener(_syncSettings);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncAsrFromTools());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncSettings());
   }
 
   void _syncAsrFromTools() {
@@ -74,9 +77,34 @@ class _ModelsPageState extends State<ModelsPage> {
     if (changed) setState(() {});
   }
 
+  void _syncSettings() {
+    if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
+    final s = widget.app.settings;
+    final asr = (s['asr'] as Map?) ?? {};
+    final correct = (s['correct'] as Map?) ?? {};
+    final translate = (s['translate'] as Map?) ?? {};
+    final openai = (translate['openai'] as Map?) ?? {};
+    settingsSynced = true;
+    setState(() {
+      asrModel.text = '${asr['model'] ?? ''}';
+      asrAligner.text = '${asr['aligner'] ?? ''}';
+      asrBackend.text = '${asr['backend'] ?? 'qwen3-1.7b'}';
+      asrLang.text = '${s['source_lang'] ?? asr['language'] ?? 'ja'}';
+      correctBase.text = '${correct['base_url'] ?? ''}';
+      correctModel.text = '${correct['model'] ?? ''}';
+      correctKey.text = '${correct['api_key'] ?? ''}';
+      transBase.text = '${openai['base_url'] ?? ''}';
+      transModel.text = '${openai['model'] ?? ''}';
+      transKey.text = '${openai['api_key'] ?? ''}';
+      translator.text = '${translate['translator'] ?? 'ForGal-json'}';
+      targetLang.text = '${s['target_lang'] ?? 'zh-cn'}';
+    });
+  }
+
   @override
   void dispose() {
     widget.app.removeListener(_syncAsrFromTools);
+    widget.app.removeListener(_syncSettings);
     asrModel.dispose();
     asrAligner.dispose();
     asrBackend.dispose();
@@ -165,10 +193,12 @@ class _ModelsPageState extends State<ModelsPage> {
       await widget.app.refreshTools();
       final models = _ids(_asr['models']);
       final aligners = _ids(_asr['aligners']);
-      if (asrModel.text.trim().isEmpty && models.isNotEmpty)
+      if (asrModel.text.trim().isEmpty && models.isNotEmpty) {
         asrModel.text = models.first;
-      if (asrAligner.text.trim().isEmpty && aligners.isNotEmpty)
+      }
+      if (asrAligner.text.trim().isEmpty && aligners.isNotEmpty) {
         asrAligner.text = aligners.first;
+      }
       final dir = '${_asr['dir'] ?? ''}';
       if (models.isEmpty) {
         _toast(dir.isEmpty ? '未扫描到 ASR 模型' : '未扫描到 ASR 模型：$dir');

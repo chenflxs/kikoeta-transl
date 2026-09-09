@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -5,16 +7,96 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../widgets.dart';
 
-class TaskPage extends StatelessWidget {
+class TaskPage extends StatefulWidget {
   final AppState app;
   const TaskPage({super.key, required this.app});
 
   @override
+  State<TaskPage> createState() => _TaskPageState();
+}
+
+class _TaskPageState extends State<TaskPage> {
+  final ScrollController _logController = ScrollController();
+  var _stickLogsToBottom = true;
+  var _lastLogCount = 0;
+  String? _lastLog;
+
+  @override
+  void initState() {
+    super.initState();
+    _logController.addListener(_onLogScroll);
+  }
+
+  @override
+  void dispose() {
+    _logController
+      ..removeListener(_onLogScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onLogScroll() {
+    if (!_logController.hasClients) return;
+    final position = _logController.position;
+    _stickLogsToBottom =
+        position.maxScrollExtent - position.pixels <= 48;
+  }
+
+  void _scheduleLogScroll(AppState app) {
+    final lastLog = app.logs.isEmpty ? null : app.logs.last;
+    final changed =
+        app.logs.length != _lastLogCount || lastLog != _lastLog;
+    if (!changed) return;
+    _lastLogCount = app.logs.length;
+    _lastLog = lastLog;
+    if (!_stickLogsToBottom) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_stickLogsToBottom || !_logController.hasClients) {
+        return;
+      }
+      final position = _logController.position;
+      if (position.hasContentDimensions) {
+        _logController.jumpTo(position.maxScrollExtent);
+      }
+    });
+  }
+
+  Future<void> _exportLogs(AppState app) async {
+    if (app.logs.isEmpty) return;
+    final now = DateTime.now();
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    final fileName =
+        'kikoeta-log-${now.year}${twoDigits(now.month)}${twoDigits(now.day)}-'
+        '${twoDigits(now.hour)}${twoDigits(now.minute)}${twoDigits(now.second)}.txt';
+    try {
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '导出日志',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['txt'],
+      );
+      if (path == null || path.isEmpty) return;
+      await File(path).writeAsString('${app.logs.join('\n')}\n');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('日志已导出')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('日志导出失败：$error')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final app = widget.app;
     final p = paletteOf(context);
     return ListenableBuilder(
       listenable: app,
       builder: (context, _) {
+        _scheduleLogScroll(app);
         return ListView(
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
           children: [
@@ -38,15 +120,6 @@ class TaskPage extends StatelessWidget {
                     '固定',
                     style: TextStyle(fontSize: 12, color: p.dim),
                   ),
-                ),
-                KtSwitchRow(
-                  icon: Icons.graphic_eq,
-                  title: '人声分离',
-                  sub: 'UVR ONNX，ASMR 干声建议关闭',
-                  value: app.enableUvr,
-                  onChanged: (v) {
-                    app.setStageFlag('uvr', v);
-                  },
                 ),
                 KtSwitchRow(
                   icon: Icons.auto_fix_high,
@@ -145,7 +218,19 @@ class TaskPage extends StatelessWidget {
                 ),
               ],
             ),
-            const SectionTitle('日志'),
+            Row(
+              children: [
+                const Expanded(child: SectionTitle('日志')),
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: TextButton.icon(
+                    onPressed: app.logs.isEmpty ? null : () => _exportLogs(app),
+                    icon: const Icon(Icons.download_outlined, size: 16),
+                    label: const Text('导出日志'),
+                  ),
+                ),
+              ],
+            ),
             Container(
               constraints: const BoxConstraints(minHeight: 180, maxHeight: 280),
               padding: const EdgeInsets.all(12),
@@ -157,6 +242,8 @@ class TaskPage extends StatelessWidget {
               child: app.logs.isEmpty
                   ? Text('尚无日志', style: TextStyle(color: p.dim, fontSize: 12))
                   : ListView.builder(
+                      controller: _logController,
+                      primary: false,
                       itemCount: app.logs.length,
                       itemBuilder: (context, index) => Text(
                         app.logs[index],

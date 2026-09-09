@@ -5,6 +5,7 @@ import base64
 import json
 import sys
 import threading
+import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,7 +19,7 @@ from kt.jobs import Job, JobManager
 from kt.models import AppSettings, JobRequest, StageFlags
 from kt.settings import load_settings, save_settings
 from kt.stages.correct import test_correct
-from kt.tools import catalog, list_crispasr_models, list_openai_models, list_uvr_models, resolve_ffmpeg
+from kt.tools import catalog, list_crispasr_models, list_openai_models, resolve_ffmpeg
 from kt.paths import WORK_DIR
 
 
@@ -26,6 +27,24 @@ MANAGER = JobManager()
 HOST = "127.0.0.1"
 PORT = 18765
 PUBLIC_PORT = 2370
+_LOCAL_SERVER: ThreadingHTTPServer | None = None
+_PUBLIC_SERVER: ThreadingHTTPServer | None = None
+_CLIENT_LAST_SEEN: float | None = None
+_CLIENT_SEEN_LOCK = threading.Lock()
+_CLIENT_WATCHDOG_STOP = threading.Event()
+CLIENT_TIMEOUT_SECONDS = 5.0
+
+
+class _EngineHTTPServer(ThreadingHTTPServer):
+    """Allow the engine process to exit without waiting for long polls.
+
+    Job event requests intentionally wait for new events for up to 20 seconds.
+    They must not keep the desktop-owned engine alive after a shutdown request
+    has already been accepted.
+    """
+
+    daemon_threads = True
+    block_on_close = False
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -47,6 +66,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/health":
             self._json({"ok": True, "name": "kikoeta-transl", "revision": 3})
+            return
+        if path == "/api/client-heartbeat":
+            self._heartbeat()
             return
         if path == "/api/settings":
             self._json(load_settings().to_dict())
@@ -87,6 +109,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        if path == "/api/shutdown":
+            # The local engine is owned by the desktop client.  Never expose
+            # process shutdown to a remote client when remote access is on.
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._error(403, "shutdown is only available from localhost")
+                return
+            self._json({"ok": True})
+            threading.Thread(target=_request_shutdown, daemon=True).start()
+            return
+        if path == "/api/client-heartbeat":
+            self._heartbeat()
+            return
         if path == "/api/v1/jobs":
             try:
                 payload = self._read_json()
@@ -95,7 +129,6 @@ class Handler(BaseHTTPRequestHandler):
                 request = JobRequest(
                     files=files,
                     flags=StageFlags(
-                        enable_uvr=bool(flags_raw.get("enable_uvr", False)),
                         enable_correct=bool(flags_raw.get("enable_correct", False)),
                         enable_translate=bool(flags_raw.get("enable_translate", True)),
                     ),
@@ -122,7 +155,6 @@ class Handler(BaseHTTPRequestHandler):
             request = JobRequest(
                 files=list(payload.get("files") or []),
                 flags=StageFlags(
-                    enable_uvr=bool(flags_raw.get("enable_uvr", False)),
                     enable_correct=bool(flags_raw.get("enable_correct", False)),
                     enable_translate=bool(flags_raw.get("enable_translate", True)),
                 ),
@@ -230,6 +262,15 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
+    def _heartbeat(self) -> None:
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._error(403, "client heartbeat is only available from localhost")
+            return
+        global _CLIENT_LAST_SEEN
+        with _CLIENT_SEEN_LOCK:
+            _CLIENT_LAST_SEEN = time.monotonic()
+        self._json({"ok": True})
+
     def _json(self, payload: dict, status: int = 200) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self._send(status, data, content_type="application/json; charset=utf-8")
@@ -266,16 +307,11 @@ def _tools() -> dict:
         asr = list_crispasr_models(settings)
     except Exception as exc:
         asr = {"models": [], "aligners": [], "executable": "", "backends": [], "error": str(exc)}
-    try:
-        uvr_models = list_uvr_models(settings)
-    except Exception:
-        uvr_models = []
     payload = {
         "ffmpeg": ffmpeg,
         "ffprobe": ffprobe,
         "ffmpeg_error": ffmpeg_error,
         "asr": asr,
-        "uvr_models": uvr_models,
     }
     try:
         payload.update(catalog())
@@ -286,15 +322,22 @@ def _tools() -> dict:
 
 
 def main() -> None:
+    global _LOCAL_SERVER, _PUBLIC_SERVER, _CLIENT_LAST_SEEN
     parser = argparse.ArgumentParser(description="Kikoeta Transl engine")
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server = _EngineHTTPServer((args.host, args.port), Handler)
+    _LOCAL_SERVER = server
+    with _CLIENT_SEEN_LOCK:
+        _CLIENT_LAST_SEEN = None
+    _CLIENT_WATCHDOG_STOP.clear()
+    threading.Thread(target=_client_watchdog, daemon=True).start()
     settings = load_settings()
     public_host = "0.0.0.0" if settings.remote_access else "127.0.0.1"
     try:
-        public_server = ThreadingHTTPServer((public_host, PUBLIC_PORT), Handler)
+        public_server = _EngineHTTPServer((public_host, PUBLIC_PORT), Handler)
+        _PUBLIC_SERVER = public_server
         threading.Thread(target=public_server.serve_forever, daemon=True).start()
         print(f"kt service listening on http://{public_host}:{PUBLIC_PORT}", flush=True)
     except OSError as exc:
@@ -304,6 +347,39 @@ def main() -> None:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        _CLIENT_WATCHDOG_STOP.set()
+        server.server_close()
+        if _PUBLIC_SERVER is not None:
+            _PUBLIC_SERVER.shutdown()
+            _PUBLIC_SERVER.server_close()
+            _PUBLIC_SERVER = None
+        _LOCAL_SERVER = None
+
+
+def _client_watchdog() -> None:
+    while not _CLIENT_WATCHDOG_STOP.wait(1.0):
+        with _CLIENT_SEEN_LOCK:
+            last_seen = _CLIENT_LAST_SEEN
+        if last_seen is None:
+            continue
+        if time.monotonic() - last_seen >= CLIENT_TIMEOUT_SECONDS:
+            print(
+                "desktop client heartbeat lost for 5 seconds; shutting down engine",
+                flush=True,
+            )
+            threading.Thread(target=_request_shutdown, daemon=True).start()
+            return
+
+
+def _request_shutdown() -> None:
+    """Stop active jobs and wake both HTTP server loops."""
+    # Let the shutdown response finish before stopping the serving loop.
+    time.sleep(0.1)
+    MANAGER.shutdown()
+    local_server = _LOCAL_SERVER
+    if local_server is not None:
+        local_server.shutdown()
 
 
 def _materialize_remote_files(items: object) -> list[str]:

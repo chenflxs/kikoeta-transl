@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -35,7 +36,6 @@ def process_file(
     kind = detect_kind(path)
     result = FileResult(path=path, kind=kind)
     wav = None
-    vocals = None
     workspace = job_dir / "gt"
     try:
         _raise_if_stopped(stop_event)
@@ -49,18 +49,10 @@ def process_file(
             result.stage = "transcoding"
             from .stages.transcode import transcode_to_wav
             wav = transcode_to_wav(path, job_dir, settings)
-            audio = wav
-            if flags.enable_uvr:
-                _raise_if_stopped(stop_event)
-                emit("status", file=path, stage="separating", message="人声分离")
-                result.stage = "separating"
-                from .stages.separate import separate_vocals
-                vocals = separate_vocals(wav, job_dir, settings)
-                audio = vocals
             emit("status", file=path, stage="asr", message="ASR 听写")
             result.stage = "asr"
             from .stages.asr import transcribe_wav
-            cues = transcribe_wav(audio, job_dir, settings)
+            cues = transcribe_wav(wav, job_dir, settings, emit=emit, file=path)
             if not cues:
                 raise PipelineError("ASR 没有产出字幕")
 
@@ -76,7 +68,13 @@ def process_file(
             emit("status", file=path, stage="correcting", message="小模型矫正")
             result.stage = "correcting"
             from .stages.correct import correct_cues
-            cues = correct_cues(cues, settings)
+            cues = correct_cues(cues, settings, emit=emit, file=path)
+            src_cues = [
+                Cue(start=item.start, end=item.end,
+                    message=item.src_message or item.message,
+                    src_message=item.src_message or item.message)
+                for item in cues
+            ]
 
         if flags.enable_translate:
             _raise_if_stopped(stop_event)
@@ -87,7 +85,19 @@ def process_file(
 
         emit("status", file=path, stage="exporting", message="导出字幕")
         result.stage = "exporting"
-        outputs = export_cues(cues, path, settings, src_cues=src_cues)
+        export_settings = settings
+        if not settings.output.suffix:
+            if flags.enable_translate:
+                suffix = _language_suffix(settings.target_lang)
+            elif flags.enable_correct:
+                suffix = ".fix"
+            else:
+                suffix = ""
+            export_settings = replace(
+                settings,
+                output=replace(settings.output, suffix=suffix),
+            )
+        outputs = export_cues(cues, path, export_settings, src_cues=src_cues)
         result.outputs = outputs
         result.status = "done"
         result.stage = "done"
@@ -109,7 +119,7 @@ def process_file(
     finally:
         if not settings.output.keep_gt_cache:
             cleanup_intermediates(workspace)
-        cleanup_intermediates(wav or "", vocals or "")
+        cleanup_intermediates(wav or "")
 
 
 def _raise_if_stopped(stop_event: Event | None) -> None:
@@ -120,3 +130,12 @@ def _raise_if_stopped(stop_event: Event | None) -> None:
 
 class StopRequested(Exception):
     pass
+
+
+def _language_suffix(language: str) -> str:
+    value = str(language or "").strip().lower().replace("_", "-")
+    if value in {"zh", "zh-cn", "zh-hans", "zh-hans-cn"}:
+        return ".zh"
+    if value in {"zh-tw", "zh-hant", "zh-hant-tw"}:
+        return ".zh-tw"
+    return "." + (value or "target")

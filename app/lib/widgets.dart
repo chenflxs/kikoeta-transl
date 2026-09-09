@@ -293,17 +293,53 @@ class _KtComboFieldState extends State<KtComboField> {
         controller: _menu,
         style: MenuStyle(
           backgroundColor: WidgetStatePropertyAll(p.surface),
-          side: WidgetStatePropertyAll(BorderSide(color: p.line)),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          shadowColor: WidgetStatePropertyAll(
+            Colors.black.withValues(alpha: .28),
+          ),
+          elevation: const WidgetStatePropertyAll(14),
+          minimumSize: const WidgetStatePropertyAll(Size(280, 0)),
+          maximumSize: const WidgetStatePropertyAll(Size(420, 360)),
+          side: WidgetStatePropertyAll(BorderSide(color: p.border)),
           shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
           padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(vertical: 4),
+            EdgeInsets.symmetric(vertical: 6, horizontal: 6),
           ),
         ),
         menuChildren: [
           for (final option in visible)
             MenuItemButton(
+              style: ButtonStyle(
+                minimumSize: const WidgetStatePropertyAll(Size(0, 42)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 12),
+                ),
+                shape: WidgetStatePropertyAll(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                foregroundColor: WidgetStatePropertyAll(p.text),
+                textStyle: const WidgetStatePropertyAll(
+                  TextStyle(
+                    fontFamily: 'SarasaUI',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                overlayColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return p.accent.withValues(alpha: .18);
+                  }
+                  if (states.contains(WidgetState.hovered) ||
+                      states.contains(WidgetState.focused)) {
+                    return p.accent.withValues(alpha: .10);
+                  }
+                  return Colors.transparent;
+                }),
+              ),
               onPressed: () {
                 widget.controller.text = option;
                 _menu.close();
@@ -311,37 +347,69 @@ class _KtComboFieldState extends State<KtComboField> {
               },
               child: SizedBox(
                 width: 320,
-                child: Text(
-                  _labelOf(option),
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _labelOf(option),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (widget.controller.text.trim() == option)
+                      Icon(Icons.check_rounded, size: 18, color: p.accent),
+                  ],
                 ),
               ),
             ),
         ],
         builder: (_, menuController, _) => TextField(
           controller: widget.controller,
-          style: const TextStyle(fontSize: 13),
+          style: TextStyle(
+            fontFamily: 'SarasaUI',
+            color: p.text,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w500,
+          ),
           onChanged: (_) {
             if (menuController.isOpen) setState(() {});
           },
           decoration: InputDecoration(
             labelText: widget.label,
             hintText: widget.hint ?? (hasOptions ? '输入或从列表选择' : null),
-            labelStyle: TextStyle(color: p.dim, fontSize: 12),
-            hintStyle: TextStyle(color: p.dim, fontSize: 12),
+            labelStyle: TextStyle(
+              color: p.dim,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+            floatingLabelStyle: TextStyle(
+              color: p.accent,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+            hintStyle: TextStyle(color: p.dim, fontSize: 12.5),
             filled: true,
             fillColor: p.surface2,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(13),
               borderSide: BorderSide(color: p.line),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(13),
               borderSide: BorderSide(color: p.line),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(13),
+              borderSide: BorderSide(color: p.accent, width: 1.4),
             ),
             suffixIcon: IconButton(
               tooltip: hasOptions ? '打开列表' : '暂无预置选项，可直接输入',
+              iconSize: 21,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               onPressed: hasOptions
                   ? () {
                       if (menuController.isOpen) {
@@ -353,7 +421,9 @@ class _KtComboFieldState extends State<KtComboField> {
                     }
                   : null,
               icon: Icon(
-                Icons.arrow_drop_down,
+                menuController.isOpen
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
                 color: hasOptions ? p.muted : p.dim,
               ),
             ),
@@ -389,34 +459,67 @@ class KtSelectField<T> extends StatelessWidget {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: TextStyle(color: p.dim, fontSize: 12),
+          labelStyle: TextStyle(
+            color: p.dim,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+          floatingLabelStyle: TextStyle(
+            color: p.accent,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
           filled: true,
           fillColor: p.surface2,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(13),
             borderSide: BorderSide(color: p.line),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(13),
             borderSide: BorderSide(color: p.line),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(13),
+            borderSide: BorderSide(color: p.accent, width: 1.4),
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
-            vertical: 4,
+            vertical: 6,
           ),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<T>(
             isExpanded: true,
             value: current,
-            icon: Icon(Icons.arrow_drop_down, color: p.muted),
+            icon: Icon(Icons.keyboard_arrow_down_rounded, color: p.muted),
+            iconSize: 21,
             dropdownColor: p.surface,
-            style: TextStyle(fontSize: 13, color: p.text),
+            focusColor: Colors.transparent,
+            elevation: 12,
+            borderRadius: BorderRadius.circular(13),
+            itemHeight: 44,
+            menuMaxHeight: 360,
+            style: TextStyle(
+              fontFamily: 'SarasaUI',
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+              color: p.text,
+            ),
             items: [
               for (final item in values)
                 DropdownMenuItem<T>(
                   value: item,
-                  child: Text(labelOf(item), overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    labelOf(item),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'SarasaUI',
+                      color: p.text,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
             ],
             onChanged: (next) {

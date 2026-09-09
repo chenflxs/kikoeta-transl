@@ -8,18 +8,18 @@
 
 - 导入音频、视频、SRT、LRC、VTT、ASS 与 SSA 文件。
 - 对媒体执行 ffmpeg 转码和 CrispASR 听写；字幕输入会跳过这两步。
-- 可选 UVR 人声分离、OpenAI 兼容模型听写矫正，以及内置 GalTransl 翻译。
+- 可选 OpenAI 兼容模型听写矫正，以及内置 GalTransl 翻译。
 - 导出目标语言或双语 LRC/SRT，并可写入 kikoeta 歌词库。
 - Flutter Windows 界面通过本地 HTTP API 驱动 Python engine；同时提供供 kikoeta 或局域网客户端调用的任务 API。
 
 ## 工作流
 
 ```text
-媒体 -> 转码 -> (UVR) -> ASR -> (矫正) -> (翻译) -> LRC / SRT / VTT
+媒体 -> 转码 -> ASR -> (矫正) -> (翻译) -> LRC / SRT / VTT
 字幕 -> 解析 ----------------> (矫正) -> (翻译) -> LRC / SRT / VTT
 ```
 
-媒体任务的转码与 ASR 为必经步骤；UVR、矫正和翻译均可在任务页关闭。提交已有字幕或歌词时，程序保留原有时间轴并从解析阶段继续。
+媒体任务的转码与 ASR 为必经步骤；矫正和翻译可在任务页关闭。提交已有字幕或歌词时，程序保留原有时间轴并从解析阶段继续。
 
 ## 前置条件
 
@@ -32,7 +32,6 @@
 | --- | --- | --- |
 | ffmpeg 与 ffprobe | `bin/ffmpeg/` | 媒体转码与探测 |
 | CrispASR、主模型与 aligner | `bin/crispasr/` | 日语听写与时间轴对齐 |
-| UVR ONNX 模型 | `bin/separate/` | 可选人声分离 |
 | llama-server | `bin/llama/` | 可选本地翻译后端 |
 
 目录内的 `README.md` 说明了各资源的位置。若未随包提供 ffmpeg，engine 会回退使用系统 `PATH` 中的 `ffmpeg` 与 `ffprobe`。
@@ -73,10 +72,10 @@ flutter run -d windows
 ```powershell
 cd engine
 python -m kt run C:\media\song.srt --no-translate
-python -m kt run C:\media\song.mkv --uvr --correct
+python -m kt run C:\media\song.mkv --correct
 ```
 
-`--uvr` 开启人声分离，`--correct` 开启听写矫正，`--no-translate` 仅导出原文时间轴。
+`--correct` 开启听写矫正，`--no-translate` 仅导出原文时间轴。
 
 ## HTTP API
 

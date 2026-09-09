@@ -19,6 +19,8 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
   late final TextEditingController contextNum;
   late final TextEditingController batchSize;
   late final TextEditingController tokenLimit;
+  bool correctThinkingEnabled = false;
+  bool translateThinkingEnabled = true;
   late String promptMode;
   bool settingsSynced = false;
 
@@ -33,8 +35,9 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       text: _text(correct['temperature'], '0.2'),
     );
     correctMaxTokens = TextEditingController(
-      text: _text(correct['max_tokens'], '1024'),
+      text: _text(correct['max_tokens'], '4096'),
     );
+    correctThinkingEnabled = _boolValue(correct['enable_thinking'], false);
     translatePrompt = TextEditingController(
       text: '${translate['prompt'] ?? ''}',
     );
@@ -46,6 +49,10 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     );
     tokenLimit = TextEditingController(
       text: _text(translate['token_limit'], '1024'),
+    );
+    translateThinkingEnabled = _boolValue(
+      translate['enable_thinking'],
+      true,
     );
     promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
         ? 'overwrite'
@@ -63,11 +70,16 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     setState(() {
       correctPrompt.text = '${correct['prompt'] ?? ''}';
       correctTemperature.text = _text(correct['temperature'], '0.2');
-      correctMaxTokens.text = _text(correct['max_tokens'], '1024');
+      correctMaxTokens.text = _text(correct['max_tokens'], '4096');
+      correctThinkingEnabled = _boolValue(correct['enable_thinking'], false);
       translatePrompt.text = '${translate['prompt'] ?? ''}';
       contextNum.text = _text(translate['context_num'], '10');
       batchSize.text = _text(translate['batch_size'], '10');
       tokenLimit.text = _text(translate['token_limit'], '1024');
+      translateThinkingEnabled = _boolValue(
+        translate['enable_thinking'],
+        true,
+      );
       promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
           ? 'overwrite'
           : 'append';
@@ -97,13 +109,26 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
 
   int _int(String raw, int fallback) => int.tryParse(raw.trim()) ?? fallback;
 
+  bool _boolValue(Object? value, bool fallback) {
+    if (value is bool) return value;
+    final text = '${value ?? ''}'.trim().toLowerCase();
+    if (text == 'true' || text == '1' || text == 'yes' || text == 'on') {
+      return true;
+    }
+    if (text == 'false' || text == '0' || text == 'no' || text == 'off') {
+      return false;
+    }
+    return fallback;
+  }
+
   Future<void> _save() async {
     final next = Map<String, dynamic>.from(widget.app.settings);
     next['correct'] = {
       ...(next['correct'] as Map? ?? {}),
       'prompt': correctPrompt.text,
       'temperature': _double(correctTemperature.text, 0.2),
-      'max_tokens': _int(correctMaxTokens.text, 1024),
+      'max_tokens': _int(correctMaxTokens.text, 4096),
+      'enable_thinking': correctThinkingEnabled,
     };
     next['translate'] = {
       ...(next['translate'] as Map? ?? {}),
@@ -112,6 +137,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       'context_num': _int(contextNum.text, 10),
       'batch_size': _int(batchSize.text, 10),
       'token_limit': _int(tokenLimit.text, 1024),
+      'enable_thinking': translateThinkingEnabled,
     };
     await widget.app.persistSettings(next);
     if (mounted) {
@@ -153,8 +179,16 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
             KtField(
               controller: correctMaxTokens,
               label: 'max_tokens',
-              hint: '1024',
+              hint: '4096',
               maxLines: 1,
+            ),
+            KtSwitchRow(
+              icon: Icons.psychology,
+              title: '启用思考/推理',
+              sub: '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
+              value: correctThinkingEnabled,
+              onChanged: (value) =>
+                  setState(() => correctThinkingEnabled = value),
             ),
           ],
         ),
@@ -178,6 +212,15 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
             KtField(controller: contextNum, label: '上下文句数', hint: '10'),
             KtField(controller: batchSize, label: '单次翻译句数', hint: '10'),
             KtField(controller: tokenLimit, label: 'Token 上限', hint: '1024'),
+            KtSwitchRow(
+              icon: Icons.psychology,
+              title: '启用思考/推理',
+              sub: '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
+              value: translateThinkingEnabled,
+              onChanged: (value) =>
+                  setState(() => translateThinkingEnabled = value),
+              showDivider: false,
+            ),
           ],
         ),
         const SizedBox(height: 14),

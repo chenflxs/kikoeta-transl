@@ -18,6 +18,57 @@ class DummyBar:
 
 
 class TranslateRefactorRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ask_chatbot_passes_configured_extra_body(self) -> None:
+        class DummyToken:
+            model_name = "demo-model"
+            domain = "https://example.com"
+            stream = False
+
+            def maskToken(self) -> str:
+                return "sk-***"
+
+        class DummyCompletions:
+            def __init__(self) -> None:
+                self.kwargs = None
+
+            async def create(self, **kwargs):
+                self.kwargs = kwargs
+                return SimpleNamespace(
+                    choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+                    model_extra={},
+                )
+
+        completions = DummyCompletions()
+        dummy = SimpleNamespace(
+            client_list=[
+                (
+                    SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+                    DummyToken(),
+                )
+            ],
+            tokenStrategy="random",
+            api_timeout=1,
+            apiErrorWait=0,
+            extra_body={"thinking": {"type": "disabled"}},
+            pj_config=SimpleNamespace(
+                bar=DummyBar(),
+                active_workers=1,
+                stop_event=None,
+                getProjectDir=lambda: "",
+            ),
+            _is_stop_requested=lambda _: False,
+            _wait_for_global_rpm_slot=AsyncMock(return_value=None),
+            _interruptible_sleep=AsyncMock(return_value=None),
+            _record_request_health=lambda *args, **kwargs: None,
+        )
+
+        result, _ = await BaseTranslate.ask_chatbot(dummy, prompt="hello")
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(
+            completions.kwargs["extra_body"], {"thinking": {"type": "disabled"}}
+        )
+
     async def test_chatbot_state_isolated_between_concurrent_workers(self) -> None:
         dummy = SimpleNamespace(
             _last_chatbot_was_stream=False,

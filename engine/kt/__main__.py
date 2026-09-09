@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -24,9 +25,15 @@ def main() -> None:
     serve.add_argument("--port", type=int, default=18765)
     run = sub.add_parser("run", help="处理本地文件")
     run.add_argument("files", nargs="+")
-    run.add_argument("--uvr", action="store_true")
     run.add_argument("--correct", action="store_true")
     run.add_argument("--no-translate", action="store_true")
+    run.add_argument(
+        "--disable-thinking",
+        "--no-thinking",
+        dest="disable_thinking",
+        action="store_true",
+        help="关闭矫正与翻译模型的思考/推理（由接口支持时生效）",
+    )
     args = parser.parse_args()
     if args.cmd == "serve":
         import server as engine_server
@@ -34,8 +41,13 @@ def main() -> None:
         engine_server.main()
         return
     settings = load_settings()
+    if args.disable_thinking:
+        settings = replace(
+            settings,
+            correct=replace(settings.correct, enable_thinking=False),
+            translate=replace(settings.translate, enable_thinking=False),
+        )
     flags = StageFlags(
-        enable_uvr=args.uvr,
         enable_correct=args.correct,
         enable_translate=not args.no_translate,
     )

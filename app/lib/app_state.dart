@@ -17,7 +17,6 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic> settings = {};
   Map<String, dynamic> tools = {};
   final List<String> files = [];
-  bool enableUvr = false;
   bool enableCorrect = false;
   bool enableTranslate = true;
   String? jobId;
@@ -25,6 +24,18 @@ class AppState extends ChangeNotifier {
   final List<String> logs = [];
   int _cursor = 0;
   Timer? _poll;
+  bool _pollInFlight = false;
+
+  bool get hasActiveJob {
+    final id = jobId;
+    if (id == null || id.isEmpty) return false;
+    return !const {
+      'done',
+      'completed',
+      'failed',
+      'cancelled',
+    }.contains(jobStatus);
+  }
 
   Future<void> bootstrap() async {
     engineOnline = await engine.ensureStarted();
@@ -47,7 +58,6 @@ class AppState extends ChangeNotifier {
       engineMessage = '工具检测失败：$e';
     }
     final flags = (settings['flags'] as Map?) ?? {};
-    enableUvr = flags['enable_uvr'] == true;
     enableCorrect = flags['enable_correct'] == true;
     enableTranslate = flags['enable_translate'] != false;
     notifyListeners();
@@ -84,7 +94,6 @@ class AppState extends ChangeNotifier {
   Future<void> persistFlags() async {
     final next = Map<String, dynamic>.from(settings);
     next['flags'] = {
-      'enable_uvr': enableUvr,
       'enable_correct': enableCorrect,
       'enable_translate': enableTranslate,
     };
@@ -93,7 +102,6 @@ class AppState extends ChangeNotifier {
   }
 
   void setStageFlag(String name, bool value) {
-    if (name == 'uvr') enableUvr = value;
     if (name == 'correct') enableCorrect = value;
     if (name == 'translate') enableTranslate = value;
     notifyListeners();
@@ -128,6 +136,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> shutdownEngine() async {
+    _poll?.cancel();
+    _poll = null;
+    await engine.shutdown();
+    engineOnline = false;
+  }
+
+  Future<void> forceShutdownEngine() async {
+    _poll?.cancel();
+    _poll = null;
+    await engine.forceShutdown();
+    engineOnline = false;
+  }
+
   Future<void> startJob() async {
     if (files.isEmpty) {
       engineMessage = '请先添加文件';
@@ -138,7 +160,6 @@ class AppState extends ChangeNotifier {
     _cursor = 0;
     final created = await engine.createJob(
       files: List.of(files),
-      enableUvr: enableUvr,
       enableCorrect: enableCorrect,
       enableTranslate: enableTranslate,
     );
@@ -158,7 +179,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> _tick() async {
     final id = jobId;
-    if (id == null) return;
+    if (id == null || _pollInFlight) return;
+    _pollInFlight = true;
     try {
       final payload = await engine.events(id, _cursor);
       final events = (payload['events'] as List?) ?? [];
@@ -170,8 +192,7 @@ class AppState extends ChangeNotifier {
         final message =
             item['message']?.toString() ?? item['error']?.toString() ?? type;
         final file = item['file']?.toString();
-        logs.add(file == null ? message : '$file  $message');
-        if (logs.length > 400) logs.removeRange(0, logs.length - 400);
+        _appendLog(file == null ? message : '$file  $message');
       }
       if (payload['closed'] == true) {
         changed = true;
@@ -182,14 +203,32 @@ class AppState extends ChangeNotifier {
       }
       if (changed) notifyListeners();
     } catch (e) {
-      logs.add('轮询失败: $e');
+      if (e is TimeoutException) {
+        _appendLog('等待 engine 事件超时，将继续轮询');
+      } else {
+        _appendLog('轮询失败: $e');
+      }
       notifyListeners();
+    } finally {
+      _pollInFlight = false;
     }
+  }
+
+  void _appendLog(String message) {
+    final now = DateTime.now();
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    final timestamp =
+        '${now.year.toString().padLeft(4, '0')}-${twoDigits(now.month)}-'
+        '${twoDigits(now.day)} ${twoDigits(now.hour)}:${twoDigits(now.minute)}:'
+        '${twoDigits(now.second)}';
+    logs.add('[$timestamp] $message');
+    if (logs.length > 400) logs.removeRange(0, logs.length - 400);
   }
 
   @override
   void dispose() {
     _poll?.cancel();
+    unawaited(engine.shutdown());
     tabNotifier.dispose();
     themeNotifier.dispose();
     super.dispose();

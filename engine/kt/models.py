@@ -66,7 +66,6 @@ def cues_from_gt_json(items: list[dict[str, Any]], fallback: list[Cue]) -> list[
 
 @dataclass
 class StageFlags:
-    enable_uvr: bool = False
     enable_correct: bool = False
     enable_translate: bool = True
 
@@ -137,7 +136,14 @@ class CorrectionSettings:
     api_key: str = ""
     prompt: str = ""
     temperature: float = 0.2
-    max_tokens: int = 1024
+    # Correction prompts include strict formatting instructions, and some
+    # providers spend part of the completion budget on hidden reasoning.
+    # Keep enough room for both reasoning and the returned subtitle text.
+    max_tokens: int = 4096
+    # Subtitle correction must leave enough completion budget for the actual
+    # SRT/LRC body.  DeepSeek enables thinking by default, so opt out unless
+    # the user explicitly turns it on.
+    enable_thinking: bool | None = False
 
 
 @dataclass
@@ -151,6 +157,9 @@ class TranslateSettings:
     context_num: int = 10
     batch_size: int = 10
     token_limit: int = 1024
+    # None leaves the provider default unchanged; False disables thinking
+    # through the OpenAI-compatible extra_body field where supported.
+    enable_thinking: bool | None = None
 
 
 OUTPUT_PRESETS = ("target_lrc", "target_srt", "bilingual_lrc", "bilingual_srt")
@@ -192,6 +201,9 @@ class OutputSettings:
     write_kikoeta_lyrics: bool = False
     kikoeta_root: str = ""
     keep_gt_cache: bool = True
+    # Optional suffix inserted before the output extension, e.g. ".fix" or
+    # ".zh". An empty suffix preserves the historical file name.
+    suffix: str = ""
 
 
 @dataclass
@@ -200,7 +212,6 @@ class AppSettings:
     ffprobe_path: str = ""
     crispasr_dir: str = ""
     llama_dir: str = ""
-    uvr_model: str = ""
     proxy: str = ""
     theme: str = "system"
     remote_access: bool = False
@@ -235,14 +246,12 @@ class AppSettings:
             ffprobe_path=str(raw.get("ffprobe_path") or ""),
             crispasr_dir=str(raw.get("crispasr_dir") or ""),
             llama_dir=str(raw.get("llama_dir") or ""),
-            uvr_model=str(raw.get("uvr_model") or ""),
             proxy=str(raw["proxy"] if "proxy" in raw else "http://127.0.0.1:7890"),
             theme=str(raw.get("theme") or "system"),
             remote_access=_as_bool(raw.get("remote_access"), False),
             source_lang=str(raw.get("source_lang") or "ja"),
             target_lang=str(raw.get("target_lang") or "zh-cn"),
             flags=StageFlags(
-                enable_uvr=bool(flags.get("enable_uvr", False)),
                 enable_correct=bool(flags.get("enable_correct", False)),
                 enable_translate=bool(flags.get("enable_translate", True)),
             ),
@@ -253,7 +262,12 @@ class AppSettings:
                 api_key=str(correct.get("api_key") or ""),
                 prompt=str(correct.get("prompt") or ""),
                 temperature=_as_float(correct.get("temperature"), 0.2),
-                max_tokens=_as_int(correct.get("max_tokens"), 1024),
+                max_tokens=_positive_int(correct.get("max_tokens"), 4096),
+                enable_thinking=(
+                    _optional_bool(correct.get("enable_thinking"))
+                    if "enable_thinking" in correct
+                    else False
+                ),
             ),
             translate=TranslateSettings(
                 translator=str(translate.get("translator") or "ForGal-json"),
@@ -269,6 +283,7 @@ class AppSettings:
                 context_num=_as_int(translate.get("context_num"), 10),
                 batch_size=_as_int(translate.get("batch_size"), 10),
                 token_limit=_as_int(translate.get("token_limit"), 1024),
+                enable_thinking=_optional_bool(translate.get("enable_thinking")),
             ),
             output=_output_from_dict(output, formats),
             dict_pre=str(raw.get("dict_pre") or ""),
@@ -373,6 +388,21 @@ def _as_bool(value: Any, default: bool) -> bool:
     return default
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+        return None
+    if isinstance(value, (bool, int, float)):
+        return bool(value)
+    return None
+
+
 def _as_float(value: Any, default: float) -> float:
     try:
         if value is None or value == "":
@@ -405,4 +435,10 @@ def _output_from_dict(output: dict[str, Any], formats: list[Any]) -> OutputSetti
         write_kikoeta_lyrics=bool(output.get("write_kikoeta_lyrics", False)),
         kikoeta_root=str(output.get("kikoeta_root") or ""),
         keep_gt_cache=bool(output.get("keep_gt_cache", True)),
+        suffix=str(output.get("suffix") or ""),
     )
+
+
+def _positive_int(value: Any, default: int) -> int:
+    parsed = _as_int(value, default)
+    return parsed if parsed > 0 else default

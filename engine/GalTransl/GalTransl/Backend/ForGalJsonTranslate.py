@@ -183,7 +183,7 @@ class ForGalJsonTranslate(BaseTranslate):
                 file_name=f"{filename}:{idx_tip}",
                 base_try_count=retry_count,
                 stream_line_callback=_parse_stream_lines,
-                max_retry_count=self.max_api_retries,
+                max_retry_count=getattr(self, "max_api_retries", 6),
             )
 
             result_text = resp or ""
@@ -253,7 +253,7 @@ class ForGalJsonTranslate(BaseTranslate):
                 try:
                     from GalTransl.server import record_runtime_error
                     record_runtime_error(
-                        getattr(self.pj_config, "runtime_project_dir", self.pj_config.getProjectDir()),
+                        BaseTranslate._project_dir(self),
                         kind="parse",
                         message=error_message,
                         filename=filename,

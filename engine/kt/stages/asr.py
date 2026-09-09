@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import os
+import queue
+import re
 import shlex
 import shutil
 import subprocess
 import tempfile
+import time
+from threading import Thread
 from pathlib import Path
 
+from ..events import EmitFn
 from ..models import AppSettings, Cue
 from ..subtitle import parse_subtitle
 from ..tools import list_crispasr_models, popen_kwargs, resolve_crispasr_dir
+
+
+_SUPPORTED_OPTIONS: dict[str, frozenset[str]] = {}
 
 
 DEFAULT_ASR_TEMPLATE = (
@@ -18,12 +26,19 @@ DEFAULT_ASR_TEMPLATE = (
     "--output-srt --output-file $output_file --file $input_file --vad "
     "--vad-model firered --vad-threshold 0.5 --vad-max-speech-duration-s 6 "
     "--vad-min-silence-duration-ms 300 --max-new-tokens 224 "
-    "--frequency-penalty 0.0 --repetition-penalty 1.0 "
-    "--condition-on-previous-text True --temperature 0.0 --split-on-punct"
+    "--frequency-penalty 0.0 "
+    "--temperature 0.0 --split-on-punct --flush-after 1"
 )
 
 
-def transcribe_wav(wav_path: str | Path, work_dir: Path, settings: AppSettings) -> list[Cue]:
+def transcribe_wav(
+    wav_path: str | Path,
+    work_dir: Path,
+    settings: AppSettings,
+    *,
+    emit: EmitFn | None = None,
+    file: str | None = None,
+) -> list[Cue]:
     info = list_crispasr_models(settings)
     executable = info["executable"]
     if not executable:
@@ -39,7 +54,9 @@ def transcribe_wav(wav_path: str | Path, work_dir: Path, settings: AppSettings) 
     model_path = _resolve_under(folder, model)
     aligner_path = _resolve_under(folder, aligner)
 
-    job_dir = Path(tempfile.mkdtemp(prefix="asr_", dir=str(work_dir)))
+    # CrispASR's Windows path handling is not reliable for non-ASCII parent
+    # directories. Keep its staged input/output in the system temp directory.
+    job_dir = Path(tempfile.mkdtemp(prefix="kt_asr_"))
     staged = job_dir / f"input{Path(wav_path).suffix.lower()}"
     output_base = job_dir / "transcript"
     generated = output_base.with_suffix(".srt")
@@ -52,20 +69,146 @@ def transcribe_wav(wav_path: str | Path, work_dir: Path, settings: AppSettings) 
         output_file=output_base,
         settings=settings,
     )
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        **popen_kwargs(),
-    )
+    _validate_options(executable, command)
+    _emit_log(emit, file, "CrispASR 已启动，正在加载模型并准备听写")
+    result = _run_with_heartbeat(command, emit=emit, file=file)
+    _emit_log(emit, file, "CrispASR 推理完成，正在读取听写结果")
     if result.returncode != 0 or not generated.is_file() or generated.stat().st_size == 0:
         detail = (result.stderr or result.stdout or "").strip()
         raise RuntimeError(f"CrispASR 失败: {detail or result.returncode}")
     cues = parse_subtitle(generated)
     shutil.rmtree(job_dir, ignore_errors=True)
     return cues
+
+
+def _run_with_heartbeat(
+    command: list[str],
+    *,
+    emit: EmitFn | None,
+    file: str | None,
+    idle_notice_after: float = 30.0,
+    idle_notice_interval: float = 60.0,
+) -> subprocess.CompletedProcess[str]:
+    """Stream CrispASR output and warn when it becomes idle."""
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        **popen_kwargs(),
+    )
+    output_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()
+    output_lines: dict[str, list[str]] = {"stdout": [], "stderr": []}
+
+    def read_output(name: str, stream) -> None:
+        try:
+            for line in stream:
+                output_queue.put((name, line.rstrip("\r\n")))
+        finally:
+            output_queue.put((name, None))
+
+    readers = [
+        Thread(
+            target=read_output,
+            args=(name, stream),
+            name=f"crispasr-{name}",
+            daemon=True,
+        )
+        for name, stream in (
+            ("stdout", process.stdout),
+            ("stderr", process.stderr),
+        )
+    ]
+    for reader in readers:
+        reader.start()
+
+    last_output = time.monotonic()
+    next_notice = last_output + idle_notice_after
+    notice_count = 0
+    streams_closed = 0
+    while True:
+        now = time.monotonic()
+        wait_for = 0.25
+        if process.poll() is None:
+            wait_for = min(wait_for, max(0.01, next_notice - now))
+        try:
+            stream_name, line = output_queue.get(timeout=wait_for)
+        except queue.Empty:
+            stream_name, line = "", ""
+        if line is None:
+            streams_closed += 1
+        elif line:
+            output_lines[stream_name].append(line)
+            last_output = time.monotonic()
+            next_notice = last_output + idle_notice_after
+            notice_count = 0
+            _emit_log(emit, file, line)
+
+        now = time.monotonic()
+        if process.poll() is None and now >= next_notice:
+            notice_count += 1
+            if notice_count >= 5:
+                _emit_log(
+                    emit,
+                    file,
+                    "CrispASR 已连续 5 次无输出，可能出现了问题，建议中断进程并检查听写参数、模型和音频文件",
+                )
+                next_notice = float("inf")
+            else:
+                _emit_log(
+                    emit,
+                    file,
+                    f"CrispASR 已超过 {int(idle_notice_after)} 秒没有输出，仍在听写中（第 {notice_count}/5 次提醒）",
+                )
+                next_notice = now + idle_notice_interval
+
+        if process.poll() is not None and streams_closed >= 2 and output_queue.empty():
+            break
+
+    returncode = process.wait()
+    return subprocess.CompletedProcess(
+        args=command,
+        returncode=returncode,
+        stdout="\n".join(output_lines["stdout"]),
+        stderr="\n".join(output_lines["stderr"]),
+    )
+
+
+def _emit_log(emit: EmitFn | None, file: str | None, message: str) -> None:
+    if emit is None:
+        return
+    payload = {"message": message}
+    if file:
+        payload["file"] = file
+    emit("log", **payload)
+
+
+def _validate_options(executable: str, command: list[str]) -> None:
+    """Reject options unsupported by the installed CrispASR binary."""
+    supported = _SUPPORTED_OPTIONS.get(executable)
+    if supported is None:
+        result = subprocess.run(
+            [executable, "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **popen_kwargs(),
+        )
+        supported = frozenset(
+            re.findall(r"--[a-z0-9][a-z0-9-]*", f"{result.stdout}\n{result.stderr}")
+        )
+        _SUPPORTED_OPTIONS[executable] = supported
+    unknown = sorted(
+        {token for token in command if token.startswith("--") and token not in supported}
+    )
+    if unknown:
+        raise RuntimeError(
+            "CrispASR 不支持参数: " + ", ".join(unknown) + "。请更新听写参数模板。"
+        )
 
 
 def build_asr_command(
@@ -79,7 +222,7 @@ def build_asr_command(
 ) -> list[str]:
     extra = settings.asr.extra_args.strip()
     if extra:
-        return _render_template(
+        command = _render_template(
             extra,
             executable=executable,
             model_path=model_path,
@@ -90,6 +233,9 @@ def build_asr_command(
             input_file=input_file,
             output_file=output_file,
         )
+        if "--flush-after" not in command:
+            command.extend(["--flush-after", "1"])
+        return command
     return _command_from_settings(
         executable=executable,
         model_path=model_path,
@@ -147,9 +293,8 @@ def _command_from_settings(
         [
             "--max-new-tokens", str(int(asr.max_new_tokens)),
             "--frequency-penalty", _fmt_num(asr.frequency_penalty),
-            "--repetition-penalty", _fmt_decimal(asr.repetition_penalty),
-            "--condition-on-previous-text", str(asr.condition_on_previous_text),
             "--temperature", _fmt_num(asr.temperature),
+            "--flush-after", str(max(1, int(asr.flush_after))),
         ]
     )
     if asr.split_on_punct:

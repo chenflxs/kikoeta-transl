@@ -10,7 +10,12 @@ class EngineClient {
 
   String baseUrl;
   Process? _process;
+  Timer? _heartbeatTimer;
+  bool _heartbeatInFlight = false;
+  Future<void>? _shutdownFuture;
+  http.Client? _eventsClient;
   String? startupError;
+  final StringBuffer _startupOutput = StringBuffer();
   static const int port = 18765;
 
   Uri _uri(String path, [Map<String, String>? query]) =>
@@ -30,6 +35,7 @@ class EngineClient {
   Future<bool> ensureStarted() async {
     startupError = null;
     if (await health()) {
+      _startHeartbeat();
       return true;
     }
     await _freeEnginePort();
@@ -54,13 +60,14 @@ class EngineClient {
     final currentPath = env['PATH'] ?? env['Path'] ?? '';
     env['PATH'] = '$pathExtra${Platform.isWindows ? ';' : ':'}$currentPath';
     env['Path'] = env['PATH']!;
+    _startupOutput.clear();
     try {
       _process = await Process.start(
         python,
         [server, '--host', '127.0.0.1', '--port', '$port'],
         workingDirectory: engineDir,
         environment: env,
-        mode: ProcessStartMode.detachedWithStdio,
+        mode: ProcessStartMode.normal,
       );
       _watchProcess(_process!);
     } on ProcessException catch (error) {
@@ -69,20 +76,64 @@ class EngineClient {
     }
     for (var i = 0; i < 30; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 400));
-      if (await health()) return true;
+      if (await health()) {
+        _startHeartbeat();
+        return true;
+      }
       if (_process == null) return false;
     }
-    startupError ??= '等待 engine 响应超时';
+    final detail = _startupOutput.toString().trim();
+    startupError ??= detail.isEmpty
+        ? '等待 engine 响应超时'
+        : '等待 engine 响应超时：$detail';
     return false;
   }
 
   Future<bool> restart() async {
-    try {
-      _process?.kill();
-    } catch (_) {}
-    _process = null;
-    await _freeEnginePort();
+    await shutdown();
     return ensureStarted();
+  }
+
+  Future<void> shutdown() {
+    final inFlight = _shutdownFuture;
+    if (inFlight != null) return inFlight;
+    late final Future<void> shutdownFuture;
+    shutdownFuture = _shutdownNow().whenComplete(() {
+      if (identical(_shutdownFuture, shutdownFuture)) {
+        _shutdownFuture = null;
+      }
+    });
+    _shutdownFuture = shutdownFuture;
+    return shutdownFuture;
+  }
+
+  Future<void> _shutdownNow() async {
+    _stopHeartbeat();
+    _cancelEventsRequest();
+    final process = _process;
+    try {
+      await http
+          .post(_uri('/api/shutdown'))
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // The process may already be stopping or the HTTP listener may be gone.
+    }
+    _process = null;
+    if (process == null) return;
+    try {
+      await process.exitCode.timeout(const Duration(seconds: 3));
+    } catch (_) {
+      try {
+        process.kill(ProcessSignal.sigterm);
+      } catch (_) {}
+      try {
+        await process.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {
+        try {
+          process.kill(ProcessSignal.sigkill);
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _freeEnginePort() async {
@@ -110,16 +161,80 @@ class EngineClient {
   }
 
   void _watchProcess(Process process) {
-    final output = StringBuffer();
-    process.stderr.transform(utf8.decoder).listen(output.write);
+    process.stdout.transform(utf8.decoder).listen(_startupOutput.write);
+    process.stderr.transform(utf8.decoder).listen(_startupOutput.write);
     process.exitCode.then((code) {
       if (!identical(_process, process)) return;
       _process = null;
-      final detail = output.toString().trim();
+      _stopHeartbeat();
+      final detail = _startupOutput.toString().trim();
       startupError = detail.isEmpty
           ? 'engine 已退出（退出码 $code）'
           : 'engine 已退出：$detail';
     });
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(_sendHeartbeat()),
+    );
+    unawaited(_sendHeartbeat());
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  Future<void> _sendHeartbeat() async {
+    if (_heartbeatInFlight) return;
+    _heartbeatInFlight = true;
+    try {
+      await http
+          .post(_uri('/api/client-heartbeat'))
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // The engine watchdog handles a disappeared client; the next tick can retry.
+    } finally {
+      _heartbeatInFlight = false;
+    }
+  }
+
+  Future<void> forceShutdown() async {
+    _stopHeartbeat();
+    _cancelEventsRequest();
+    final process = _process;
+    _process = null;
+
+    if (process == null) {
+      // This client may have attached to an already-running engine, in which
+      // case no Process handle is available. Ask it to stop and rely on its
+      // heartbeat watchdog if the request cannot be delivered in time.
+      try {
+        await http
+            .post(_uri('/api/shutdown'))
+            .timeout(const Duration(milliseconds: 250));
+      } catch (_) {}
+      return;
+    }
+
+    if (Platform.isWindows) {
+      try {
+        final result = await Process.run('taskkill', [
+          '/PID',
+          '${process.pid}',
+          '/T',
+          '/F',
+        ]).timeout(const Duration(milliseconds: 600));
+        if (result.exitCode == 0) return;
+      } catch (_) {}
+    }
+
+    try {
+      process.kill(ProcessSignal.sigkill);
+    } catch (_) {}
   }
 
   Future<Map<String, dynamic>> settings() async => _get('/api/settings');
@@ -174,7 +289,6 @@ class EngineClient {
 
   Future<Map<String, dynamic>> createJob({
     required List<String> files,
-    required bool enableUvr,
     required bool enableCorrect,
     required bool enableTranslate,
   }) async {
@@ -184,7 +298,6 @@ class EngineClient {
       body: jsonEncode({
         'files': files,
         'flags': {
-          'enable_uvr': enableUvr,
           'enable_correct': enableCorrect,
           'enable_translate': enableTranslate,
         },
@@ -195,20 +308,35 @@ class EngineClient {
 
   Future<Map<String, dynamic>> job(String id) async => _get('/api/jobs/$id');
 
-  Future<Map<String, dynamic>> events(String id, int after) async =>
-      _get('/api/jobs/$id/events', {'after': '$after'});
+  Future<Map<String, dynamic>> events(String id, int after) async {
+    final client = http.Client();
+    _eventsClient = client;
+    try {
+      final res = await client
+          .get(_uri('/api/jobs/$id/events', {'after': '$after'}))
+          .timeout(const Duration(seconds: 25));
+      return _decode(res);
+    } finally {
+      if (identical(_eventsClient, client)) _eventsClient = null;
+      client.close();
+    }
+  }
+
+  void _cancelEventsRequest() {
+    _eventsClient?.close();
+    _eventsClient = null;
+  }
 
   Future<void> cancel(String id) async {
     await http.post(_uri('/api/jobs/$id/cancel'));
   }
 
   Future<Map<String, dynamic>> _get(
-    String path, [
+    String path, {
     Map<String, String>? query,
-  ]) async {
-    final res = await http
-        .get(_uri(path, query))
-        .timeout(const Duration(seconds: 8));
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final res = await http.get(_uri(path, query)).timeout(timeout);
     return _decode(res);
   }
 
@@ -233,7 +361,6 @@ class EngineClient {
     final ffmpegDir = Directory(p.join(root, 'bin', 'ffmpeg'));
     final asrDir = Directory(p.join(root, 'bin', 'crispasr'));
     final dictDir = Directory(p.join(root, 'engine', 'GalTransl', 'Dict'));
-    final separateDir = Directory(p.join(root, 'bin', 'separate'));
     final ffmpeg = _firstFile([
       p.join(ffmpegDir.path, 'bin', 'ffmpeg.exe'),
       p.join(ffmpegDir.path, 'ffmpeg.exe'),
@@ -325,7 +452,6 @@ class EngineClient {
           'granite',
         ],
       },
-      'uvr_models': _listNames(separateDir, '.onnx'),
       'dict_dir': dictDir.path,
       'gt_dicts': dicts,
       'source_langs': const [

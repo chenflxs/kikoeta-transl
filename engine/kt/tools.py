@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import struct
 import subprocess
 from pathlib import Path
 
@@ -53,18 +54,19 @@ TRANSLATORS = [
 
 
 def resolve_ffmpeg(settings: AppSettings) -> tuple[str, str]:
-    ffmpeg = _first_existing(*_tool_candidates("ffmpeg", settings.ffmpeg_path, extra_roots=[BIN_DIR / "ffmpeg", BIN_DIR]))
+    tool_roots = [BIN_DIR / "ffmpeg", BIN_DIR]
+    ffmpeg = _first_runnable(*_tool_candidates("ffmpeg", settings.ffmpeg_path, extra_roots=tool_roots))
     probe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
     beside = str(Path(ffmpeg).with_name(probe_name)) if ffmpeg else ""
-    ffprobe = _first_existing(
+    ffprobe = _first_runnable(
         settings.ffprobe_path,
         beside,
         *_tool_candidates("ffprobe", "", extra_roots=[BIN_DIR / "ffmpeg", BIN_DIR]),
     )
     if not ffmpeg:
-        raise FileNotFoundError("未找到 ffmpeg。请将 ffmpeg.exe 放到 bin/ffmpeg 或 bin/ffmpeg/bin，或在设置中指定路径。")
+        raise FileNotFoundError("未找到可运行的 ffmpeg。请将有效的 ffmpeg.exe 放到 bin/ffmpeg 或 bin/ffmpeg/bin，或在设置中指定路径。")
     if not ffprobe:
-        raise FileNotFoundError("未找到 ffprobe。请与 ffmpeg 放在同一目录。")
+        raise FileNotFoundError("未找到可运行的 ffprobe。请将有效的 ffprobe.exe 与 ffmpeg 放在同一目录。")
     return ffmpeg, ffprobe
 
 
@@ -136,13 +138,6 @@ def list_crispasr_backends(settings: AppSettings | None = None) -> list[str]:
     except (OSError, subprocess.SubprocessError, ValueError, TypeError, json.JSONDecodeError):
         pass
     return list(FALLBACK_ASR_BACKENDS)
-
-
-def list_uvr_models(settings: AppSettings) -> list[str]:
-    folder = BIN_DIR / "separate"
-    if not folder.is_dir():
-        return []
-    return sorted(path.name for path in folder.glob("*.onnx"))
 
 
 def list_gt_dicts() -> list[dict[str, object]]:
@@ -287,3 +282,75 @@ def _first_existing(*candidates: object) -> str:
         if path.is_file():
             return str(path.resolve())
     return ""
+
+
+def _first_runnable(*candidates: object) -> str:
+    """Return the first executable that Windows can actually start.
+
+    A damaged or truncated PE file can still pass ``Path.is_file()`` and even
+    have an ``MZ`` header. Probe the tools before selecting them so a broken
+    bundled copy does not mask a valid system installation.
+    """
+    seen: set[str] = set()
+    for item in candidates:
+        if not item:
+            continue
+        path = Path(str(item))
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if not path.is_file() or not _is_valid_executable(path):
+            continue
+        try:
+            result = subprocess.run(
+                [str(path), "-version"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                **popen_kwargs(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0:
+            return str(path.resolve())
+    return ""
+
+
+def _is_valid_executable(path: Path) -> bool:
+    """Reject truncated Windows PE files before trying to launch them."""
+    if os.name != "nt":
+        return True
+    try:
+        file_size = path.stat().st_size
+        with path.open("rb") as file:
+            if file.read(2) != b"MZ":
+                return False
+            file.seek(0x3C)
+            raw = file.read(4)
+            if len(raw) != 4:
+                return False
+            pe_offset = struct.unpack("<I", raw)[0]
+            if pe_offset + 24 > file_size:
+                return False
+            file.seek(pe_offset)
+            header = file.read(24)
+            if len(header) != 24 or header[:4] != b"PE\0\0":
+                return False
+            section_count = struct.unpack_from("<H", header, 6)[0]
+            optional_size = struct.unpack_from("<H", header, 20)[0]
+            section_table = pe_offset + 24 + optional_size
+            if section_table + section_count * 40 > file_size:
+                return False
+            file.seek(section_table)
+            for _ in range(section_count):
+                section = file.read(40)
+                if len(section) != 40:
+                    return False
+                raw_size = struct.unpack_from("<I", section, 16)[0]
+                raw_offset = struct.unpack_from("<I", section, 20)[0]
+                if raw_offset + raw_size > file_size:
+                    return False
+    except (OSError, struct.error):
+        return False
+    return True

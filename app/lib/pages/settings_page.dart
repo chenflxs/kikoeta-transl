@@ -16,7 +16,6 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController ffmpeg;
   late final TextEditingController crispasr;
   late final TextEditingController proxy;
-  late final TextEditingController uvr;
   String? _themeSelection;
   late bool remoteAccess;
 
@@ -27,7 +26,6 @@ class _SettingsPageState extends State<SettingsPage> {
     ffmpeg = TextEditingController(text: '${s['ffmpeg_path'] ?? ''}');
     crispasr = TextEditingController(text: '${s['crispasr_dir'] ?? ''}');
     proxy = TextEditingController(text: '${s['proxy'] ?? ''}');
-    uvr = TextEditingController(text: '${s['uvr_model'] ?? ''}');
     remoteAccess = s['remote_access'] == true;
   }
 
@@ -36,7 +34,6 @@ class _SettingsPageState extends State<SettingsPage> {
     ffmpeg.dispose();
     crispasr.dispose();
     proxy.dispose();
-    uvr.dispose();
     super.dispose();
   }
 
@@ -45,7 +42,6 @@ class _SettingsPageState extends State<SettingsPage> {
     next['ffmpeg_path'] = ffmpeg.text.trim();
     next['crispasr_dir'] = crispasr.text.trim();
     next['proxy'] = proxy.text.trim();
-    next['uvr_model'] = uvr.text.trim();
     next['theme'] = themeMode;
     next['remote_access'] = remoteAccess;
     await widget.app.persistSettings(next);
@@ -137,7 +133,6 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             KtField(controller: ffmpeg, label: 'ffmpeg 路径'),
             KtField(controller: crispasr, label: 'CrispASR 目录'),
-            KtField(controller: uvr, label: 'UVR 模型文件名'),
             KtField(
               controller: proxy,
               label: 'HTTP 代理',

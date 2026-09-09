@@ -149,12 +149,12 @@ class COpenAITokenPool:
         try:
             from GalTransl.server import record_runtime_error
 
+            project_dir = getattr(self.pj_config, "runtime_project_dir", "")
+            if not project_dir:
+                getter = getattr(self.pj_config, "getProjectDir", None)
+                project_dir = getter() if callable(getter) else ""
             record_runtime_error(
-                getattr(
-                    self.pj_config,
-                    "runtime_project_dir",
-                    self.pj_config.getProjectDir(),
-                ),
+                project_dir,
                 kind=kind,
                 message=message,
                 model=model,
@@ -182,6 +182,7 @@ class COpenAITokenPool:
         st = time()
 
         try:
+            section_name = "OpenAI-Compatible"
             LOGGER.info(f"API URL: {token.domain}/chat/completions")
             proxy_kwargs = build_httpx_sync_proxy_kwargs(proxy.addr if proxy else None)
             client = OpenAI(
@@ -198,6 +199,12 @@ class COpenAITokenPool:
                 stream=token.stream,
                 max_tokens=1,
             )
+            extra_body = (
+                self.pj_config.getBackendConfigSection(section_name).get("extra_body")
+                or {}
+            )
+            if isinstance(extra_body, dict) and extra_body:
+                create_kwargs["extra_body"] = extra_body
             try:
                 response = client.chat.completions.create(**create_kwargs)
             except TypeError:

@@ -37,6 +37,10 @@ def translate_cues(
     stop_event=None,
 ) -> list[Cue]:
     ensure_galtransl_path()
+    # GalTransl temporarily changes cwd to its own package directory. Resolve
+    # here so its project/config paths remain valid for callers that pass a
+    # relative workspace (the CLI and HTTP job paths are usually absolute).
+    workspace = workspace.resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     for name in ("gt_input", "gt_output", "transl_cache"):
         (workspace / name).mkdir(parents=True, exist_ok=True)
@@ -135,6 +139,16 @@ def _write_config(workspace: Path, settings: AppSettings) -> None:
             }
         ]
         openai_cfg["checkAvailable"] = bool(settings.translate.openai.api_key)
+        if settings.translate.enable_thinking is None:
+            openai_cfg.pop("extra_body", None)
+        else:
+            openai_cfg["extra_body"] = {
+                "thinking": {
+                    "type": "enabled"
+                    if settings.translate.enable_thinking
+                    else "disabled"
+                }
+            }
     proxy = cfg.setdefault("proxy", {})
     proxy["enableProxy"] = bool(settings.proxy)
     proxy["proxies"] = [{"address": settings.proxy}] if settings.proxy else []

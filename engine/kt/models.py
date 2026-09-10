@@ -214,6 +214,8 @@ class AppSettings:
     proxy: str = ""
     theme: str = "system"
     remote_access: bool = False
+    remote_username: str = "admin"
+    remote_password: str = "kikoeta"
     source_lang: str = "ja"
     target_lang: str = "zh-cn"
     flags: StageFlags = field(default_factory=StageFlags)
@@ -248,6 +250,8 @@ class AppSettings:
             proxy=str(raw["proxy"] if "proxy" in raw else "http://127.0.0.1:7890"),
             theme=str(raw.get("theme") or "system"),
             remote_access=_as_bool(raw.get("remote_access"), False),
+            remote_username=_remote_username(raw.get("remote_username")),
+            remote_password=str(raw.get("remote_password") or "kikoeta"),
             source_lang=str(raw.get("source_lang") or "ja"),
             target_lang=str(raw.get("target_lang") or "zh-cn"),
             flags=StageFlags(
@@ -296,6 +300,7 @@ class JobRequest:
     files: list[str]
     flags: StageFlags = field(default_factory=StageFlags)
     settings_override: dict[str, Any] = field(default_factory=dict)
+    cleanup_paths: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -385,6 +390,11 @@ def _as_bool(value: Any, default: bool) -> bool:
     if text in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _remote_username(value: Any) -> str:
+    username = str(value or "admin").strip()
+    return username if username and ":" not in username else "admin"
 
 
 def _optional_bool(value: Any) -> bool | None:

@@ -16,6 +16,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController ffmpeg;
   late final TextEditingController crispasr;
   late final TextEditingController proxy;
+  late final TextEditingController remoteUsername;
+  late final TextEditingController remotePassword;
   String? _themeSelection;
   late bool remoteAccess;
 
@@ -26,6 +28,12 @@ class _SettingsPageState extends State<SettingsPage> {
     ffmpeg = TextEditingController(text: '${s['ffmpeg_path'] ?? ''}');
     crispasr = TextEditingController(text: '${s['crispasr_dir'] ?? ''}');
     proxy = TextEditingController(text: '${s['proxy'] ?? ''}');
+    remoteUsername = TextEditingController(
+      text: '${s['remote_username'] ?? 'admin'}',
+    );
+    remotePassword = TextEditingController(
+      text: '${s['remote_password'] ?? 'kikoeta'}',
+    );
     remoteAccess = s['remote_access'] == true;
   }
 
@@ -34,6 +42,8 @@ class _SettingsPageState extends State<SettingsPage> {
     ffmpeg.dispose();
     crispasr.dispose();
     proxy.dispose();
+    remoteUsername.dispose();
+    remotePassword.dispose();
     super.dispose();
   }
 
@@ -44,6 +54,8 @@ class _SettingsPageState extends State<SettingsPage> {
     next['proxy'] = proxy.text.trim();
     next['theme'] = themeMode;
     next['remote_access'] = remoteAccess;
+    next['remote_username'] = remoteUsername.text.trim();
+    next['remote_password'] = remotePassword.text;
     await widget.app.persistSettings(next);
   }
 
@@ -62,6 +74,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _save() async {
+    if (!_validRemoteCredentials()) return;
     final previousRemoteAccess = widget.app.settings['remote_access'] == true;
     await _persistPaths();
     await widget.app.reload();
@@ -76,7 +89,39 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  bool _validRemoteCredentials() {
+    final username = remoteUsername.text.trim();
+    if (username.isEmpty || remotePassword.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('远程用户名和密码不能为空')));
+      return false;
+    }
+    if (username.contains(':')) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('远程用户名不能包含冒号')));
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _resetRemoteCredentials() async {
+    remoteUsername.text = 'admin';
+    remotePassword.text = 'kikoeta';
+    final next = Map<String, dynamic>.from(widget.app.settings);
+    next['remote_username'] = 'admin';
+    next['remote_password'] = 'kikoeta';
+    await widget.app.persistSettings(next);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('远程账密已重置为 admin / kikoeta')));
+  }
+
   Future<void> _refreshTools() async {
+    if (!_validRemoteCredentials()) return;
     await _persistPaths();
     await widget.app.refreshTools();
     if (mounted) {
@@ -173,6 +218,23 @@ class _SettingsPageState extends State<SettingsPage> {
               sub: remoteAccess ? '服务监听 0.0.0.0:2370' : '服务仅监听 127.0.0.1:2370',
               value: remoteAccess,
               onChanged: (value) => setState(() => remoteAccess = value),
+              showDivider: false,
+            ),
+          ],
+        ),
+        const SectionTitle('远程身份验证'),
+        KtGroup(
+          children: [
+            KtField(controller: remoteUsername, label: '用户名'),
+            KtField(controller: remotePassword, label: '密码', obscure: true),
+            KtRow(
+              icon: Icons.restore,
+              title: '重置默认账密',
+              sub: 'admin / kikoeta',
+              trailing: TextButton(
+                onPressed: _resetRemoteCredentials,
+                child: const Text('重置'),
+              ),
               showDivider: false,
             ),
           ],

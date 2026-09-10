@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hmac
 import json
 import sys
 import threading
@@ -9,13 +10,15 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from kt.jobs import Job, JobManager
+from kt.cleanup import cleanup_intermediates
+from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
 from kt.settings import load_settings, save_settings
 from kt.stages.correct import test_correct
@@ -58,14 +61,16 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = parse_qs(parsed.query)
+        if not self._allow_request(path):
+            return
         if path == "/api/v1/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 3, "service": "remote"})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": 5, "service": "remote"})
             return
         if path.startswith("/api/v1/jobs/"):
             self._remote_job_get(path, query)
             return
         if path == "/api/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 3})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": 5})
             return
         if path == "/api/client-heartbeat":
             self._heartbeat()
@@ -98,7 +103,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path.rstrip("/") == "/api/settings":
+        path = parsed.path.rstrip("/") or "/"
+        if not self._allow_request(path):
+            return
+        if path == "/api/settings":
             payload = self._read_json()
             settings = AppSettings.from_dict(payload)
             save_settings(settings)
@@ -109,6 +117,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        if not self._allow_request(path):
+            return
         if path == "/api/shutdown":
             # The local engine is owned by the desktop client.  Never expose
             # process shutdown to a remote client when remote access is on.
@@ -122,9 +132,10 @@ class Handler(BaseHTTPRequestHandler):
             self._heartbeat()
             return
         if path == "/api/v1/jobs":
+            cleanup_paths: list[str] = []
             try:
                 payload = self._read_json()
-                files = _materialize_remote_files(payload.get("files") or [])
+                files, cleanup_paths = _materialize_remote_files(payload.get("files") or [])
                 flags_raw = payload.get("flags") or {}
                 request = JobRequest(
                     files=files,
@@ -133,9 +144,11 @@ class Handler(BaseHTTPRequestHandler):
                         enable_translate=bool(flags_raw.get("enable_translate", True)),
                     ),
                     settings_override=payload.get("settings") or {},
+                    cleanup_paths=cleanup_paths,
                 )
                 job = MANAGER.create(request)
             except (ValueError, OSError, TypeError, base64.binascii.Error) as exc:
+                cleanup_intermediates(*cleanup_paths)
                 self._error(400, str(exc))
                 return
             self._json(_remote_job_payload(job), status=201)
@@ -262,6 +275,32 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
+    def _allow_request(self, path: str) -> bool:
+        is_public_service = self.server.server_address[1] == PUBLIC_PORT
+        if is_public_service and not _is_remote_api_path(path):
+            self._error(404, "not found")
+            return False
+        if not _is_remote_api_path(path):
+            return True
+        settings = load_settings()
+        if _valid_remote_authorization(
+            self.headers.get("authorization"),
+            settings.remote_username,
+            settings.remote_password,
+        ):
+            return True
+        self._unauthorized()
+        return False
+
+    def _unauthorized(self) -> None:
+        data = json.dumps({"error": "需要有效的 kt 用户名和密码"}, ensure_ascii=False).encode("utf-8")
+        self._send(
+            401,
+            data,
+            content_type="application/json; charset=utf-8",
+            extra_headers={"www-authenticate": 'Basic realm="kikoeta-transl", charset="UTF-8"'},
+        )
+
     def _heartbeat(self) -> None:
         if self.client_address[0] not in {"127.0.0.1", "::1"}:
             self._error(403, "client heartbeat is only available from localhost")
@@ -278,13 +317,21 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, message: str) -> None:
         self._json({"error": message}, status=status)
 
-    def _send(self, status: int, body: bytes, content_type: str) -> None:
+    def _send(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
         self.send_response(status)
         self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(body)))
         self.send_header("access-control-allow-origin", "*")
         self.send_header("access-control-allow-methods", "GET,POST,PUT,OPTIONS")
-        self.send_header("access-control-allow-headers", "content-type")
+        self.send_header("access-control-allow-headers", "content-type, authorization")
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         if body:
             self.wfile.write(body)
@@ -319,6 +366,34 @@ def _tools() -> dict:
         payload["gt_dicts"] = []
         payload["dict_error"] = str(exc)
     return payload
+
+
+def _valid_remote_authorization(
+    header: str | None,
+    username: str,
+    password: str,
+) -> bool:
+    if not header or not header.lower().startswith("basic "):
+        return False
+    try:
+        encoded = header.split(None, 1)[1].strip()
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+        supplied_username, separator, supplied_password = decoded.partition(":")
+        if not separator:
+            return False
+    except (ValueError, UnicodeDecodeError, base64.binascii.Error):
+        return False
+    username_matches = hmac.compare_digest(
+        supplied_username.encode("utf-8"), username.encode("utf-8")
+    )
+    password_matches = hmac.compare_digest(
+        supplied_password.encode("utf-8"), password.encode("utf-8")
+    )
+    return username_matches & password_matches
+
+
+def _is_remote_api_path(path: str) -> bool:
+    return path.startswith("/api/v1/")
 
 
 def main() -> None:
@@ -382,29 +457,55 @@ def _request_shutdown() -> None:
         local_server.shutdown()
 
 
-def _materialize_remote_files(items: object) -> list[str]:
+def _materialize_remote_files(items: object) -> tuple[list[str], list[str]]:
     if not isinstance(items, list):
         raise ValueError("files must be a list")
     upload_dir = WORK_DIR / "remote" / uuid.uuid4().hex
     paths: list[str] = []
-    for index, item in enumerate(items):
-        if isinstance(item, str) and item.strip():
-            paths.append(item)
-            continue
-        if not isinstance(item, dict):
-            raise ValueError(f"invalid file at index {index}")
-        name = Path(str(item.get("name") or f"input_{index}")).name
-        encoded = str(item.get("content_base64") or "")
-        if not encoded:
-            raise ValueError(f"file {name} has no content_base64")
-        content = base64.b64decode(encoded, validate=True)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        target = upload_dir / name
-        target.write_bytes(content)
-        paths.append(str(target))
-    if not paths:
-        raise ValueError("没有输入文件")
-    return paths
+    cleanup_paths: list[str] = []
+    try:
+        for index, item in enumerate(items):
+            if isinstance(item, str) and item.strip():
+                paths.append(item)
+                continue
+            if not isinstance(item, dict):
+                raise ValueError(f"invalid file at index {index}")
+            encoded = str(item.get("content_base64") or "")
+            source_url = str(item.get("url") or "").strip()
+            if bool(encoded) == bool(source_url):
+                raise ValueError(f"file at index {index} must provide exactly one of content_base64 or url")
+            name = _remote_file_name(item.get("name"), source_url, index)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            if not cleanup_paths:
+                cleanup_paths.append(str(upload_dir))
+            target = upload_dir / f"{index:03d}_{name}"
+            if source_url:
+                headers = item.get("headers") or {}
+                if not isinstance(headers, dict):
+                    raise ValueError(f"headers for file at index {index} must be an object")
+                download_http_file(
+                    source_url,
+                    target,
+                    {str(key): str(value) for key, value in headers.items()},
+                )
+            else:
+                target.write_bytes(base64.b64decode(encoded, validate=True))
+            paths.append(str(target))
+        if not paths:
+            raise ValueError("没有输入文件")
+        return paths, cleanup_paths
+    except Exception:
+        cleanup_intermediates(*cleanup_paths)
+        raise
+
+
+def _remote_file_name(value: object, source_url: str, index: int) -> str:
+    name = Path(str(value or "")).name
+    if not name and source_url:
+        name = Path(unquote(urlparse(source_url).path)).name
+    return name or f"input_{index}"
+
+
 
 
 def _remote_job_payload(job: Job) -> dict:

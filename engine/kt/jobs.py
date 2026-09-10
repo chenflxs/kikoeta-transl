@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
 
 from .events import EventBus
+from .cleanup import cleanup_intermediates
 from .models import AppSettings, FileResult, JobRequest, StageFlags
 from .paths import WORK_DIR
 from .pipeline import process_file
@@ -24,6 +25,7 @@ class Job:
     files: list[str]
     flags: StageFlags
     settings: AppSettings
+    cleanup_paths: list[str] = field(default_factory=list)
     status: str = "queued"
     created_at: str = field(default_factory=_now)
     results: list[FileResult] = field(default_factory=list)
@@ -57,6 +59,7 @@ class JobManager:
             files=files,
             flags=request.flags,
             settings=settings,
+            cleanup_paths=list(request.cleanup_paths),
         )
         self._jobs[job.job_id] = job
         thread = Thread(target=self._run, args=(job,), daemon=True)
@@ -94,9 +97,21 @@ class JobManager:
                     break
                 file_dir = job_dir / Path(path).stem
                 file_dir.mkdir(parents=True, exist_ok=True)
+                process_settings = job.settings
+                if job.cleanup_paths:
+                    # Remote sources live in a disposable upload directory. Keep
+                    # downloadable outputs in the job directory so input cleanup
+                    # cannot remove them as soon as the job completes.
+                    process_settings = replace(
+                        job.settings,
+                        output=replace(
+                            job.settings.output,
+                            directory=str(file_dir / "outputs"),
+                        ),
+                    )
                 result = process_file(
                     path=path,
-                    settings=job.settings,
+                    settings=process_settings,
                     flags=job.flags,
                     job_dir=file_dir,
                     emit=job.bus.emit,
@@ -114,5 +129,6 @@ class JobManager:
             job.error = str(exc)
             job.bus.emit("log", message=str(exc))
         finally:
+            cleanup_intermediates(*job.cleanup_paths)
             job.bus.emit("job_done", status=job.status)
             job.bus.close()

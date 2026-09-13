@@ -2,8 +2,7 @@
 
 ![Kikoeta Transl logo](logo/logo.png)
 
-Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间轴的歌词 / 字幕，并导出给 [kikoeta](https://github.com/chenflxs/kikoeta) 使用。
-
+Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间轴的歌词 / 字幕，并导出给 [kikoeta](https://github.com/chenflxs/kikoeta) 使用。当然也可作为独立翻译器使用，但是我更推荐你使用[VoiceTransl](https://github.com/shinnpuru/VoiceTransl)
 ## 能做什么
 
 - 导入音频、视频，以及 `SRT`、`LRC`、`VTT`、`ASS`、`SSA` 字幕。
@@ -19,7 +18,7 @@ Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间
 
 ## 从源码运行
 
-运行环境：Windows 10/11 x64、Python 3.10+；仅在运行或构建桌面界面时需要 Flutter SDK。
+运行环境：Windows 10/11 x64、Python 3.10+；仅在运行或构建桌面界面时需要 Flutter SDK。请先按下文下载并配置 ffmpeg、CrispASR 与模型；这些大文件不会随仓库提供。
 
 启动 Python engine：
 
@@ -45,19 +44,50 @@ python -m kt run C:\media\song.srt --no-translate
 python -m kt run C:\media\song.mkv --correct
 ```
 
-## 本地资源与 Git 策略
+## 下载与配置本地资源
 
-仓库只保存源码、文档和小型配置。以下资源由使用者自行放置，已被 `.gitignore` 排除：
+仓库只保存源码、文档和小型配置。可执行文件、模型、API 设置和工作产物均在 `.gitignore` 中排除，需自行下载并放到以下目录：
 
-| 资源 | 放置位置 |
-| --- | --- |
-| ffmpeg、ffprobe | `bin/ffmpeg/` |
-| CrispASR、模型与 aligner | `bin/crispasr/` |
-| llama-server 和本地模型（可选） | `bin/llama/` |
+| 资源 | 放置位置 | 快速链接 |
+| --- | --- | --- |
+| ffmpeg、ffprobe | `bin/ffmpeg/` | [FFmpeg 下载页](https://ffmpeg.org/download.html) |
+| CrispASR 可执行文件 | `bin/crispasr/` | [CrispASR Releases](https://github.com/CrispStrobe/CrispASR/releases) |
+| 本地翻译模型与 llama-server（可选） | `bin/llama/` | [llama.cpp Releases](https://github.com/ggml-org/llama.cpp/releases) |
 
-每个 `bin/` 子目录中保留的 `README.md` 说明资源用途。若未内置 ffmpeg，程序会尝试使用系统 `PATH` 中的版本；只处理已有字幕时不需要 CrispASR。
+将 `ffmpeg.exe`、`ffprobe.exe` 放入 `bin/ffmpeg/`，并将 CrispASR 发布包中的 `crispasr.exe` 放入 `bin/crispasr/`。也可以将 ffmpeg 安装到系统 `PATH`；只处理已有字幕时不需要 CrispASR。
 
-同样不会提交 API 设置和密钥（`engine/data/settings.json`、`.env*`）、任务工作目录、Flutter/Dart 缓存、手工测试资料、发布包及本机构建辅助文件。模型页打开时，API 地址、模型名和 API Key 均为空，需在本机填写并保存。
+### ASR 与时间轴对齐模型
+
+本项目使用 CrispASR 的 GGUF 模型。请将下表中各下载页提供的一个 `.gguf` 文件放进 `bin/crispasr/`；不要下载仅供 Python/Transformers 使用的 Safetensors 权重。模型页点击“查询模型列表”后会自动发现文件。
+
+| 用途 | 建议模型与文件 | 魔搭 | Hugging Face |
+| --- | --- | --- | --- |
+| 日语动漫 / Galgame 听写 | `qwen3-asr-1.7b-ja-anime`；推荐 `qwen3-asr-1.7b-ja-anime-q4_k.gguf`（约 1.5 GB） | [搜索同名 GGUF](https://modelscope.cn/models?name=qwen3-asr-1.7b-ja-anime-GGUF) | [模型页](https://huggingface.co/cstr/qwen3-asr-1.7b-ja-anime-GGUF) |
+| 字词级时间轴 | `qwen3-forced-aligner-0.6b`；推荐 `qwen3-forced-aligner-0.6b-q4_k.gguf`（约 0.5 GB） | [搜索同名 GGUF](https://modelscope.cn/models?name=qwen3-forced-aligner-0.6b-GGUF) | [模型页](https://huggingface.co/cstr/qwen3-forced-aligner-0.6b-GGUF) |
+
+在“模型”页中选择这两个文件，`backend` 选择 `qwen3-1.7b`（或 CrispASR 列出的等效 Qwen3 backend），源语言选择 `ja`。Q4_K 是默认推荐的体积与质量平衡；显存或内存充足时也可选择同页的 Q8_0 文件。
+
+### 本地翻译模型
+
+本地翻译需要将 [llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server.exe` 与一个 Sakura GGUF 放入 `bin/llama/`，再在模型页填写本地服务的 OpenAI 兼容地址（通常为 `http://127.0.0.1:8080/v1`）。以下按可用显存给出建议；实际占用还会随量化、上下文长度和其他程序变化。
+
+| 可用显存 | 推荐 Sakura 模型 | 建议量化 / 说明 |
+| --- | --- | --- |
+| 4–6 GB | [Sakura-1.5B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-1.5B-Qwen2.5-v1.0-GGUF) | Q4；适合尝试或低显存设备，翻译质量有限。 |
+| 8–10 GB | [Sakura-7B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-7B-Qwen2.5-v1.0-GGUF) | IQ4_XS / Q4；日常本地翻译的优先选择。 |
+| 12–16 GB | [Sakura-14B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-14B-Qwen2.5-v1.0-GGUF) | IQ4_XS / Q4；质量与显存的平衡选择。 |
+| 24 GB 以上 | [Sakura-32B-Qwen2beta-v0.9-GGUF](https://huggingface.co/SakuraLLM/Sakura-32B-Qwen2beta-v0.9-GGUF) | Q4；建议保留额外显存给上下文。若更重视稳定速度，可改用 14B 的 Q6_K。 |
+
+示例启动命令（请把模型文件名替换为实际下载的文件）：
+
+```powershell
+cd bin/llama
+.\llama-server.exe -m .\sakura-7b-qwen2.5-v1.0-iq4xs.gguf --host 127.0.0.1 --port 8080
+```
+
+### 在线翻译模型
+
+在线服务只需在“模型”页填写服务商提供的 OpenAI 兼容地址、模型名和 API Key。个人推荐优先尝试 `ds-v4-pro` 与 `kimi-k2.5`。(这只是个人使用偏好，并不保证是最适合或最好的模型；如果发现更适合字幕翻译的模型，欢迎[提交 Issue](https://github.com/chenflxs/kikoeta-transl/issues/new)分享)。
 
 ## 目录说明
 

@@ -113,7 +113,37 @@ class RemoteAuthorizationTests(unittest.TestCase):
                 with urlopen(request, timeout=2) as response:
                     payload = json.load(response)
                 self.assertTrue(payload["ok"])
-                self.assertEqual(payload["revision"], 5)
+                self.assertEqual(payload["revision"], 6)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_cache_listing_requires_authentication_and_exposes_download_urls(self):
+        server = _EngineHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+        url = f"http://127.0.0.1:{port}/api/v1/cache"
+        entries = [
+            {
+                "job_id": "cached-job",
+                "work_id": "RJ123",
+                "completed_at": "2026-09-13T00:00:00+00:00",
+                "files": [{"track_path": "track.mp3", "name": "track.zh.lrc"}],
+            }
+        ]
+        try:
+            with patch("server.load_settings", return_value=AppSettings()), patch(
+                "server.list_cached_results", return_value=entries
+            ):
+                request = Request(url, headers={"Authorization": _basic("admin", "kikoeta")})
+                with urlopen(request, timeout=2) as response:
+                    payload = json.load(response)
+                self.assertEqual(
+                    payload["entries"][0]["files"][0]["download_url"],
+                    "/api/v1/cache/cached-job/files/0",
+                )
         finally:
             server.shutdown()
             server.server_close()

@@ -52,7 +52,7 @@ def main() -> None:
     tk.Label(inner, text="Kikoeta Transl", fg=TEXT, bg=BG, font=("Segoe UI", 22, "bold")).pack(anchor="w")
     tk.Label(
         inner,
-        text="这是 kt 翻译伴侣 Demo，不是 kikoeta 播放器。",
+        text="这是 kikoeta-transl 翻译伴侣 Demo，不是 kikoeta 播放器。",
         fg=GREEN,
         bg=BG,
         font=("Segoe UI", 12),

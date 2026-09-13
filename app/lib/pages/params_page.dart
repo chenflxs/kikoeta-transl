@@ -67,7 +67,7 @@ class _ParamsPageState extends State<ParamsPage> {
     );
     template.addListener(_onTemplateChanged);
     enableVad = asr['enable_vad'] != false;
-    splitOnPunct = asr['split_on_punct'] == true;
+    splitOnPunct = asr['split_on_punct'] != false;
     forceAligner = asr['force_aligner'] != false;
     splitOnWord = asr['split_on_word'] == true;
     noFallback = asr['no_fallback'] == true;
@@ -111,9 +111,11 @@ class _ParamsPageState extends State<ParamsPage> {
       r'$backend',
       '--model',
       r'$model_file',
-      '--aligner-model',
-      r'$aligner_file',
-      if (forceAligner) '--force-aligner',
+      if (forceAligner) ...[
+        '--aligner-model',
+        r'$aligner_file',
+        '--force-aligner',
+      ],
       '--language',
       r'$language',
       '--output-srt',

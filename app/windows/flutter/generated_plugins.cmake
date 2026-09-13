@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   screen_retriever_windows
+  tray_manager
   window_manager
 )
 

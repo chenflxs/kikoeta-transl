@@ -36,21 +36,20 @@ class _ModelsPageState extends State<ModelsPage> {
     super.initState();
     final s = widget.app.settings;
     final asr = (s['asr'] as Map?) ?? {};
-    final correct = (s['correct'] as Map?) ?? {};
     final translate = (s['translate'] as Map?) ?? {};
-    final openai = (translate['openai'] as Map?) ?? {};
+    // 不从本地设置回填 API 地址、模型名或密钥。
     asrModel = TextEditingController(text: '${asr['model'] ?? ''}');
     asrAligner = TextEditingController(text: '${asr['aligner'] ?? ''}');
     asrBackend = TextEditingController(
       text: '${asr['backend'] ?? 'qwen3-1.7b'}',
     );
     asrLang = TextEditingController(text: '${s['source_lang'] ?? 'ja'}');
-    correctBase = TextEditingController(text: '${correct['base_url'] ?? ''}');
-    correctModel = TextEditingController(text: '${correct['model'] ?? ''}');
-    correctKey = TextEditingController(text: '${correct['api_key'] ?? ''}');
-    transBase = TextEditingController(text: '${openai['base_url'] ?? ''}');
-    transModel = TextEditingController(text: '${openai['model'] ?? ''}');
-    transKey = TextEditingController(text: '${openai['api_key'] ?? ''}');
+    correctBase = TextEditingController();
+    correctModel = TextEditingController();
+    correctKey = TextEditingController();
+    transBase = TextEditingController();
+    transModel = TextEditingController();
+    transKey = TextEditingController();
     translator = TextEditingController(
       text: '${translate['translator'] ?? 'ForGal-json'}',
     );
@@ -81,21 +80,19 @@ class _ModelsPageState extends State<ModelsPage> {
     if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
     final s = widget.app.settings;
     final asr = (s['asr'] as Map?) ?? {};
-    final correct = (s['correct'] as Map?) ?? {};
     final translate = (s['translate'] as Map?) ?? {};
-    final openai = (translate['openai'] as Map?) ?? {};
     settingsSynced = true;
     setState(() {
       asrModel.text = '${asr['model'] ?? ''}';
       asrAligner.text = '${asr['aligner'] ?? ''}';
       asrBackend.text = '${asr['backend'] ?? 'qwen3-1.7b'}';
       asrLang.text = '${s['source_lang'] ?? asr['language'] ?? 'ja'}';
-      correctBase.text = '${correct['base_url'] ?? ''}';
-      correctModel.text = '${correct['model'] ?? ''}';
-      correctKey.text = '${correct['api_key'] ?? ''}';
-      transBase.text = '${openai['base_url'] ?? ''}';
-      transModel.text = '${openai['model'] ?? ''}';
-      transKey.text = '${openai['api_key'] ?? ''}';
+      correctBase.clear();
+      correctModel.clear();
+      correctKey.clear();
+      transBase.clear();
+      transModel.clear();
+      transKey.clear();
       translator.text = '${translate['translator'] ?? 'ForGal-json'}';
       targetLang.text = '${s['target_lang'] ?? 'zh-cn'}';
     });

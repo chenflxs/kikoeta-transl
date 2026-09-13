@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from kt.jobs import Job, JobManager
+from kt.kikoeta_cache import cached_file, list_cached_results
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
@@ -64,13 +65,19 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allow_request(path):
             return
         if path == "/api/v1/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 5, "service": "remote"})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": 6, "service": "remote"})
+            return
+        if path == "/api/v1/cache":
+            self._remote_cache_list()
+            return
+        if path.startswith("/api/v1/cache/"):
+            self._remote_cache_get(path)
             return
         if path.startswith("/api/v1/jobs/"):
             self._remote_job_get(path, query)
             return
         if path == "/api/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 5})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": 6})
             return
         if path == "/api/client-heartbeat":
             self._heartbeat()
@@ -145,8 +152,9 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                     settings_override=payload.get("settings") or {},
                     cleanup_paths=cleanup_paths,
+                    cache_context=_remote_cache_context(payload),
                 )
-                job = MANAGER.create(request)
+                job = MANAGER.create(request, source="kikoeta")
             except (ValueError, OSError, TypeError, base64.binascii.Error) as exc:
                 cleanup_intermediates(*cleanup_paths)
                 self._error(400, str(exc))
@@ -257,6 +265,30 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._error(404, "not found")
 
+    def _remote_cache_list(self) -> None:
+        entries = list_cached_results()
+        for entry in entries:
+            for index, item in enumerate(entry["files"]):
+                item["download_url"] = (
+                    f"/api/v1/cache/{entry['job_id']}/files/{index}"
+                )
+        self._json({"entries": entries})
+
+    def _remote_cache_get(self, path: str) -> None:
+        parts = path.split("/")
+        if len(parts) != 7 or parts[5] != "files":
+            self._error(404, "not found")
+            return
+        try:
+            file_path = cached_file(parts[4], int(parts[6]))
+            self._send(
+                200,
+                file_path.read_bytes(),
+                content_type="application/octet-stream",
+            )
+        except (ValueError, OSError):
+            self._error(404, "cached file not found")
+
     def _sse(self, job_id: str, query: dict[str, list[str]]) -> None:
         job = MANAGER.get(job_id)
         if job is None:
@@ -293,7 +325,7 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _unauthorized(self) -> None:
-        data = json.dumps({"error": "需要有效的 kt 用户名和密码"}, ensure_ascii=False).encode("utf-8")
+        data = json.dumps({"error": "需要有效的 kikoeta-transl 用户名和密码"}, ensure_ascii=False).encode("utf-8")
         self._send(
             401,
             data,
@@ -414,10 +446,17 @@ def main() -> None:
         public_server = _EngineHTTPServer((public_host, PUBLIC_PORT), Handler)
         _PUBLIC_SERVER = public_server
         threading.Thread(target=public_server.serve_forever, daemon=True).start()
-        print(f"kt service listening on http://{public_host}:{PUBLIC_PORT}", flush=True)
+        print(
+            f"kikoeta-transl service listening on http://{public_host}:{PUBLIC_PORT}",
+            flush=True,
+        )
     except OSError as exc:
-        print(f"kt service unavailable on {public_host}:{PUBLIC_PORT}: {exc}", file=sys.stderr, flush=True)
-    print(f"kt engine listening on http://{args.host}:{args.port}", flush=True)
+        print(
+            f"kikoeta-transl service unavailable on {public_host}:{PUBLIC_PORT}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+    print(f"kikoeta-transl engine listening on http://{args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -504,6 +543,20 @@ def _remote_file_name(value: object, source_url: str, index: int) -> str:
     if not name and source_url:
         name = Path(unquote(urlparse(source_url).path)).name
     return name or f"input_{index}"
+
+
+def _remote_cache_context(payload: dict) -> dict[str, object]:
+    raw = payload.get("cache")
+    if not isinstance(raw, dict):
+        return {}
+    work_id = str(raw.get("work_id") or "").strip()
+    paths = raw.get("track_paths")
+    if not work_id or not isinstance(paths, list):
+        return {}
+    return {
+        "work_id": work_id,
+        "track_paths": [str(path).strip() for path in paths],
+    }
 
 
 

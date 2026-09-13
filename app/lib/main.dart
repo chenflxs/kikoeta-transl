@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:window_manager/window_manager.dart';
 
 import 'app_state.dart';
@@ -44,7 +45,7 @@ class KtApp extends StatefulWidget {
   State<KtApp> createState() => _KtAppState();
 }
 
-class _KtAppState extends State<KtApp> with WindowListener {
+class _KtAppState extends State<KtApp> with WindowListener, tray.TrayListener {
   bool _closing = false;
   bool _closePromptOpen = false;
 
@@ -52,12 +53,84 @@ class _KtAppState extends State<KtApp> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    tray.trayManager.addListener(this);
+    unawaited(_initTray());
   }
 
   @override
   void dispose() {
+    tray.trayManager.removeListener(this);
+    unawaited(tray.trayManager.destroy());
     windowManager.removeListener(this);
     super.dispose();
+  }
+
+  Future<void> _initTray() async {
+    try {
+      await tray.trayManager.setIcon('windows/runner/resources/app_icon.ico');
+      await tray.trayManager.setToolTip('Kikoeta Transl');
+      await tray.trayManager.setContextMenu(
+        tray.Menu(
+          items: [
+            tray.MenuItem(key: 'show_window', label: '显示窗口'),
+            tray.MenuItem(key: 'stop_task', label: '停止任务'),
+            tray.MenuItem.separator(),
+            tray.MenuItem(key: 'exit_app', label: '退出'),
+          ],
+        ),
+      );
+    } catch (_) {
+      // The desktop app remains usable if the system tray is unavailable.
+    }
+  }
+
+  @override
+  void onWindowMinimize() {
+    if (_closing) return;
+    unawaited(_hideToTray());
+  }
+
+  Future<void> _hideToTray() async {
+    try {
+      await windowManager.hide();
+    } catch (_) {}
+  }
+
+  Future<void> _showWindow() async {
+    try {
+      if (await windowManager.isMinimized()) {
+        await windowManager.restore();
+      }
+      await windowManager.show();
+      await windowManager.focus();
+    } catch (_) {}
+  }
+
+  @override
+  void onTrayIconMouseDown() {
+    unawaited(_showWindow());
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    unawaited(tray.trayManager.popUpContextMenu());
+  }
+
+  @override
+  void onTrayMenuItemClick(tray.MenuItem menuItem) {
+    switch (menuItem.key) {
+      case 'show_window':
+        unawaited(_showWindow());
+        return;
+      case 'stop_task':
+        unawaited(appState.cancelJob());
+        return;
+      case 'exit_app':
+        if (_closing) return;
+        _closing = true;
+        unawaited(_terminateApplication());
+        return;
+    }
   }
 
   @override
@@ -101,6 +174,12 @@ class _KtAppState extends State<KtApp> with WindowListener {
   }
 
   Future<void> _terminateApplication() async {
+    try {
+      await tray.trayManager.destroy().timeout(
+        const Duration(milliseconds: 150),
+      );
+    } catch (_) {}
+
     // Remove the UI first. Flutter/plugin disposal and network futures are not
     // part of the user-visible close path anymore.
     try {
@@ -111,9 +190,9 @@ class _KtAppState extends State<KtApp> with WindowListener {
     // desktop process unconditionally. The engine watchdog remains a fallback
     // for an engine instance that was not started by this client.
     try {
-      await appState
-          .forceShutdownEngine()
-          .timeout(const Duration(milliseconds: 750));
+      await appState.forceShutdownEngine().timeout(
+        const Duration(milliseconds: 750),
+      );
     } catch (_) {}
     exit(0);
   }

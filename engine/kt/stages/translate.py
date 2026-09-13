@@ -7,7 +7,9 @@ import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Event
 
+from ..cancellation import TaskCancelled, raise_if_cancelled
 from ..events import EmitFn
 from ..models import AppSettings, Cue, cues_from_gt_json, cues_to_gt_json
 from ..paths import GALTRANSL_ROOT
@@ -34,8 +36,9 @@ def translate_cues(
     workspace: Path,
     settings: AppSettings,
     emit: EmitFn | None = None,
-    stop_event=None,
+    stop_event: Event | None = None,
 ) -> list[Cue]:
+    raise_if_cancelled(stop_event)
     ensure_galtransl_path()
     # GalTransl temporarily changes cwd to its own package directory. Resolve
     # here so its project/config paths remain valid for callers that pass a
@@ -60,6 +63,11 @@ def translate_cues(
         if handler:
             logging.getLogger("GalTransl").removeHandler(handler)
 
+    if (
+        (stop_event is not None and stop_event.is_set())
+        or getattr(state, "status", "") == "cancelled"
+    ):
+        raise TaskCancelled()
     if not getattr(state, "success", False):
         raise RuntimeError(getattr(state, "error", None) or "GalTransl 翻译失败")
     output_path = workspace / "gt_output" / "cues.json"

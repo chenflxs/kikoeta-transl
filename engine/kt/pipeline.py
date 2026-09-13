@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
+from .cancellation import TaskCancelled, raise_if_cancelled
 from .cleanup import cleanup_intermediates
 from .events import EmitFn
 from .models import AppSettings, Cue, FileKind, FileResult, StageFlags
@@ -48,11 +49,20 @@ def process_file(
             emit("status", file=path, stage="transcoding", message="ffmpeg 转码")
             result.stage = "transcoding"
             from .stages.transcode import transcode_to_wav
-            wav = transcode_to_wav(path, job_dir, settings)
+            wav = transcode_to_wav(path, job_dir, settings, stop_event=stop_event)
+            _raise_if_stopped(stop_event)
             emit("status", file=path, stage="asr", message="ASR 听写")
             result.stage = "asr"
             from .stages.asr import transcribe_wav
-            cues = transcribe_wav(wav, job_dir, settings, emit=emit, file=path)
+            cues = transcribe_wav(
+                wav,
+                job_dir,
+                settings,
+                emit=emit,
+                file=path,
+                stop_event=stop_event,
+            )
+            _raise_if_stopped(stop_event)
             if not cues:
                 raise PipelineError("ASR 没有产出字幕")
 
@@ -68,7 +78,14 @@ def process_file(
             emit("status", file=path, stage="correcting", message="小模型矫正")
             result.stage = "correcting"
             from .stages.correct import correct_cues
-            cues = correct_cues(cues, settings, emit=emit, file=path)
+            cues = correct_cues(
+                cues,
+                settings,
+                emit=emit,
+                file=path,
+                stop_event=stop_event,
+            )
+            _raise_if_stopped(stop_event)
             src_cues = [
                 Cue(start=item.start, end=item.end,
                     message=item.src_message or item.message,
@@ -81,7 +98,15 @@ def process_file(
             emit("status", file=path, stage="translating", message="翻译")
             result.stage = "translating"
             from .stages.translate import translate_cues
-            cues = translate_cues(cues, workspace, settings, emit=emit)
+            cues = translate_cues(
+                cues,
+                workspace,
+                settings,
+                emit=emit,
+                stop_event=stop_event,
+            )
+
+        _raise_if_stopped(stop_event)
 
         emit("status", file=path, stage="exporting", message="导出字幕")
         result.stage = "exporting"
@@ -104,7 +129,7 @@ def process_file(
         result.message = f"完成，产出 {len(outputs)} 个文件"
         emit("file_done", file=path, outputs=outputs)
         return result
-    except StopRequested:
+    except TaskCancelled:
         result.status = "cancelled"
         result.stage = "cancelled"
         result.error = "已取消"
@@ -123,13 +148,11 @@ def process_file(
 
 
 def _raise_if_stopped(stop_event: Event | None) -> None:
-    if stop_event is not None and stop_event.is_set():
-        raise StopRequested()
+    raise_if_cancelled(stop_event)
 
 
 
-class StopRequested(Exception):
-    pass
+StopRequested = TaskCancelled
 
 
 def _language_suffix(language: str) -> str:

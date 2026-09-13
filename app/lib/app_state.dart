@@ -21,10 +21,13 @@ class AppState extends ChangeNotifier {
   bool enableTranslate = true;
   String? jobId;
   String jobStatus = '';
+  String jobSource = '';
   final List<String> logs = [];
   int _cursor = 0;
   Timer? _poll;
+  Timer? _remoteJobDiscovery;
   bool _pollInFlight = false;
+  bool _remoteJobDiscoveryInFlight = false;
 
   bool get hasActiveJob {
     final id = jobId;
@@ -44,6 +47,7 @@ class AppState extends ChangeNotifier {
         : '${engine.startupError ?? '未能启动 engine'}，请手动运行 python engine/server.py';
     if (engineOnline) {
       await reload();
+      _startRemoteJobDiscovery();
     }
     notifyListeners();
   }
@@ -129,7 +133,10 @@ class AppState extends ChangeNotifier {
     engineOnline = false;
     notifyListeners();
     engineOnline = await engine.restart();
-    if (engineOnline) await reload();
+    if (engineOnline) {
+      await reload();
+      _startRemoteJobDiscovery();
+    }
     engineMessage = engineOnline
         ? 'engine 已连接'
         : engine.startupError ?? '未能启动 engine';
@@ -139,6 +146,8 @@ class AppState extends ChangeNotifier {
   Future<void> shutdownEngine() async {
     _poll?.cancel();
     _poll = null;
+    _remoteJobDiscovery?.cancel();
+    _remoteJobDiscovery = null;
     await engine.shutdown();
     engineOnline = false;
   }
@@ -146,6 +155,8 @@ class AppState extends ChangeNotifier {
   Future<void> forceShutdownEngine() async {
     _poll?.cancel();
     _poll = null;
+    _remoteJobDiscovery?.cancel();
+    _remoteJobDiscovery = null;
     await engine.forceShutdown();
     engineOnline = false;
   }
@@ -165,6 +176,7 @@ class AppState extends ChangeNotifier {
     );
     jobId = created['job_id'] as String?;
     jobStatus = created['status'] as String? ?? 'running';
+    jobSource = created['source']?.toString() ?? 'desktop';
     engineMessage = '任务已开始';
     notifyListeners();
     _poll?.cancel();
@@ -173,8 +185,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> cancelJob() async {
     final id = jobId;
-    if (id == null) return;
+    if (id == null || !hasActiveJob) return;
     await engine.cancel(id);
+    jobStatus = 'cancelling';
+    engineMessage = '正在停止任务…';
+    _appendLog('已请求停止任务，正在等待当前阶段结束');
+    notifyListeners();
   }
 
   Future<void> _tick() async {
@@ -214,6 +230,51 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void _startRemoteJobDiscovery() {
+    _remoteJobDiscovery?.cancel();
+    _remoteJobDiscovery = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _discoverKikoetaJob(),
+    );
+    unawaited(_discoverKikoetaJob());
+  }
+
+  Future<void> _discoverKikoetaJob() async {
+    if (!engineOnline ||
+        _remoteJobDiscoveryInFlight ||
+        (hasActiveJob && jobSource != 'kikoeta')) {
+      return;
+    }
+    _remoteJobDiscoveryInFlight = true;
+    try {
+      final jobs = await engine.jobs();
+      final candidates = jobs.reversed.where(
+        (job) =>
+            job['source'] == 'kikoeta' &&
+            const {'queued', 'running', 'cancelling'}.contains(job['status']),
+      );
+      if (candidates.isEmpty) return;
+      final job = candidates.first;
+      final id = job['job_id']?.toString() ?? '';
+      if (id.isEmpty || id == jobId) return;
+
+      _poll?.cancel();
+      logs.clear();
+      _cursor = 0;
+      jobId = id;
+      jobStatus = job['status']?.toString() ?? 'queued';
+      jobSource = 'kikoeta';
+      engineMessage = '正在显示由 kikoeta 发起的任务日志';
+      _poll = Timer.periodic(const Duration(milliseconds: 800), (_) => _tick());
+      notifyListeners();
+      unawaited(_tick());
+    } catch (_) {
+      // The next discovery cycle retries after temporary local-engine errors.
+    } finally {
+      _remoteJobDiscoveryInFlight = false;
+    }
+  }
+
   void _appendLog(String message) {
     final now = DateTime.now();
     String twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -228,6 +289,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _poll?.cancel();
+    _remoteJobDiscovery?.cancel();
     unawaited(engine.shutdown());
     tabNotifier.dispose();
     themeNotifier.dispose();

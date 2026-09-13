@@ -30,7 +30,10 @@ class DictPage extends StatelessWidget {
     }
   }
 
-  Future<void> _openInEditor(BuildContext context, Map<String, dynamic> item) async {
+  Future<void> _openInEditor(
+    BuildContext context,
+    Map<String, dynamic> item,
+  ) async {
     final path = '${item['path'] ?? ''}'.trim();
     if (path.isEmpty) return;
     final file = File(path);
@@ -39,9 +42,9 @@ class DictPage extends StatelessWidget {
       content = await file.readAsString(encoding: utf8);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('无法读取字典：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法读取字典：$e')));
       }
       return;
     }
@@ -64,11 +67,15 @@ class DictPage extends StatelessWidget {
       try {
         await app.refreshTools();
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('字典已保存')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('字典已保存')));
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('字典已保存，但刷新失败：$e')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('字典已保存，但刷新失败：$e')));
         }
       }
     }
@@ -83,17 +90,29 @@ class DictPage extends StatelessWidget {
         final dicts = _dicts();
         final dictDir = '${app.tools['dict_dir'] ?? 'engine/GalTransl/Dict'}';
         final groups = {
-          'pre': [for (final item in dicts) if (item['category'] == 'pre') item],
-          'gpt': [for (final item in dicts) if (item['category'] == 'gpt') item],
-          'post': [for (final item in dicts) if (item['category'] == 'post') item],
+          'pre': [
+            for (final item in dicts)
+              if (item['category'] == 'pre') item,
+          ],
+          'gpt': [
+            for (final item in dicts)
+              if (item['category'] == 'gpt') item,
+          ],
+          'post': [
+            for (final item in dicts)
+              if (item['category'] == 'post') item,
+          ],
         };
         return ListView(
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
           children: [
-            const Text('字典', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            const Text(
+              '字典',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 6),
             Text(
-              '直接使用 GalTransl 内置 Dict。点击条目会在 kt 内置编辑器中打开。',
+              '直接使用 GalTransl 内置 Dict。点击条目会在 kikoeta-transl 内置编辑器中打开。',
               style: TextStyle(fontSize: 12, color: p.muted),
             ),
             Align(
@@ -104,14 +123,16 @@ class DictPage extends StatelessWidget {
                     await app.refreshTools();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('已刷新，发现 ${_dicts().length} 个字典')),
+                        SnackBar(
+                          content: Text('已刷新，发现 ${_dicts().length} 个字典'),
+                        ),
                       );
                     }
                   } catch (e) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('刷新失败：$e')),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text('刷新失败：$e')));
                     }
                   }
                 },
@@ -121,29 +142,38 @@ class DictPage extends StatelessWidget {
             ),
             if (dicts.isEmpty) ...[
               const SectionTitle('GalTransl Dict'),
-              KtGroup(children: [
-                KtRow(
-                  icon: Icons.menu_book_outlined,
-                  title: '未找到字典文件',
-                  sub: dictDir,
-                  showDivider: false,
-                ),
-              ]),
+              KtGroup(
+                children: [
+                  KtRow(
+                    icon: Icons.menu_book_outlined,
+                    title: '未找到字典文件',
+                    sub: dictDir,
+                    showDivider: false,
+                  ),
+                ],
+              ),
             ],
             for (final category in ['pre', 'gpt', 'post'])
               if ((groups[category] ?? const []).isNotEmpty) ...[
                 SectionTitle(_title(category)),
-                KtGroup(children: [
-                  for (var i = 0; i < groups[category]!.length; i++)
-                    KtRow(
-                      icon: Icons.menu_book_outlined,
-                      title: '${groups[category]![i]['name'] ?? ''}',
-                      sub: '${groups[category]![i]['count'] ?? 0} 条 · 点击编辑',
-                      trailing: Icon(Icons.edit_outlined, size: 18, color: p.dim),
-                      onTap: () => _openInEditor(context, groups[category]![i]),
-                      showDivider: i != groups[category]!.length - 1,
-                    ),
-                ]),
+                KtGroup(
+                  children: [
+                    for (var i = 0; i < groups[category]!.length; i++)
+                      KtRow(
+                        icon: Icons.menu_book_outlined,
+                        title: '${groups[category]![i]['name'] ?? ''}',
+                        sub: '${groups[category]![i]['count'] ?? 0} 条 · 点击编辑',
+                        trailing: Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: p.dim,
+                        ),
+                        onTap: () =>
+                            _openInEditor(context, groups[category]![i]),
+                        showDivider: i != groups[category]!.length - 1,
+                      ),
+                  ],
+                ),
               ],
           ],
         );
@@ -166,7 +196,8 @@ class _DictionaryEditorDialog extends StatefulWidget {
   });
 
   @override
-  State<_DictionaryEditorDialog> createState() => _DictionaryEditorDialogState();
+  State<_DictionaryEditorDialog> createState() =>
+      _DictionaryEditorDialogState();
 }
 
 class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
@@ -202,9 +233,19 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(widget.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(
+                widget.name,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 3),
-              Text(widget.path, style: TextStyle(fontSize: 11, color: p.dim), overflow: TextOverflow.ellipsis),
+              Text(
+                widget.path,
+                style: TextStyle(fontSize: 11, color: p.dim),
+                overflow: TextOverflow.ellipsis,
+              ),
               const SizedBox(height: 12),
               Expanded(
                 child: TextField(
@@ -213,29 +254,47 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
                   maxLines: null,
                   minLines: null,
                   textAlignVertical: TextAlignVertical.top,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.35),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: p.surface2,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     contentPadding: const EdgeInsets.all(14),
                   ),
                 ),
               ),
               if (error != null) ...[
                 const SizedBox(height: 8),
-                Text('保存失败：$error', style: TextStyle(color: p.red, fontSize: 12)),
+                Text(
+                  '保存失败：$error',
+                  style: TextStyle(color: p.red, fontSize: 12),
+                ),
               ],
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(onPressed: saving ? null : () => Navigator.of(context).pop(false), child: const Text('取消')),
+                  TextButton(
+                    onPressed: saving
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('取消'),
+                  ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: saving ? null : _save,
                     icon: saving
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.save_outlined, size: 17),
                     label: Text(saving ? '保存中…' : '保存'),
                   ),

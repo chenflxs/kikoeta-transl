@@ -308,6 +308,16 @@ class EngineClient {
 
   Future<Map<String, dynamic>> job(String id) async => _get('/api/jobs/$id');
 
+  Future<List<Map<String, dynamic>>> jobs() async {
+    final payload = await _get('/api/jobs');
+    final items = payload['jobs'];
+    if (items is! List) return const [];
+    return [
+      for (final item in items)
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+  }
+
   Future<Map<String, dynamic>> events(String id, int after) async {
     final client = http.Client();
     _eventsClient = client;

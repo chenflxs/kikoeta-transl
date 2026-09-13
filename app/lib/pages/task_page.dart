@@ -38,14 +38,12 @@ class _TaskPageState extends State<TaskPage> {
   void _onLogScroll() {
     if (!_logController.hasClients) return;
     final position = _logController.position;
-    _stickLogsToBottom =
-        position.maxScrollExtent - position.pixels <= 48;
+    _stickLogsToBottom = position.maxScrollExtent - position.pixels <= 48;
   }
 
   void _scheduleLogScroll(AppState app) {
     final lastLog = app.logs.isEmpty ? null : app.logs.last;
-    final changed =
-        app.logs.length != _lastLogCount || lastLog != _lastLog;
+    final changed = app.logs.length != _lastLogCount || lastLog != _lastLog;
     if (!changed) return;
     _lastLogCount = app.logs.length;
     _lastLog = lastLog;
@@ -78,14 +76,14 @@ class _TaskPageState extends State<TaskPage> {
       if (path == null || path.isEmpty) return;
       await File(path).writeAsString('${app.logs.join('\n')}\n');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('日志已导出')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('日志已导出')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('日志导出失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('日志导出失败：$error')));
     }
   }
 
@@ -187,7 +185,9 @@ class _TaskPageState extends State<TaskPage> {
             Row(
               children: [
                 FilledButton(
-                  onPressed: app.engineOnline ? app.startJob : null,
+                  onPressed: app.engineOnline && !app.hasActiveJob
+                      ? app.startJob
+                      : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: p.accent,
                     foregroundColor: Colors.white,
@@ -203,7 +203,7 @@ class _TaskPageState extends State<TaskPage> {
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton(
-                  onPressed: app.jobId == null ? null : app.cancelJob,
+                  onPressed: app.hasActiveJob ? app.cancelJob : null,
                   child: const Text('停止'),
                 ),
                 const SizedBox(width: 8),
@@ -213,7 +213,9 @@ class _TaskPageState extends State<TaskPage> {
                 ),
                 const Spacer(),
                 Text(
-                  app.jobStatus,
+                  app.jobSource == 'kikoeta'
+                      ? '${app.jobStatus} · 来自 kikoeta'
+                      : app.jobStatus,
                   style: TextStyle(color: p.dim, fontSize: 12),
                 ),
               ],

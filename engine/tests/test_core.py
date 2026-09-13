@@ -127,7 +127,7 @@ class AsrCommandTests(unittest.TestCase):
             "--vad-model", "firered", "--vad-threshold", "0.5",
             "--vad-max-speech-duration-s", "6", "--vad-min-silence-duration-ms", "300",
             "--max-new-tokens", "224", "--frequency-penalty", "0.0",
-            "--temperature", "0.0", "--flush-after", "1", "--split-on-punct",
+            "--temperature", "0.0", "--split-on-punct",
         ])
 
     def test_command_respects_fields_and_extra_args(self):
@@ -152,9 +152,31 @@ class AsrCommandTests(unittest.TestCase):
             settings=settings,
         )
         self.assertNotIn("--vad", command)
+        self.assertNotIn("--aligner-model", command)
         self.assertNotIn("--force-aligner", command)
         self.assertIn("--split-on-punct", command)
         self.assertIn("64", command)
+
+        legacy_template = AppSettings(
+            asr=AsrSettings(
+                force_aligner=False,
+                extra_args=(
+                    "$crispasr_executable --model $model_file "
+                    "--aligner-model $aligner_file --force-aligner "
+                    "--output-srt --output-file $output_file --file $input_file"
+                ),
+            )
+        )
+        cleaned = build_asr_command(
+            executable="crispasr.exe",
+            model_path=Path("model.gguf"),
+            aligner_path=Path("aligner.gguf"),
+            input_file=Path("in.wav"),
+            output_file=Path("out"),
+            settings=legacy_template,
+        )
+        self.assertNotIn("--aligner-model", cleaned)
+        self.assertNotIn("--force-aligner", cleaned)
 
         override = AppSettings(asr=AsrSettings(extra_args="$crispasr_executable --file $input_file --language $language"))
         rendered = build_asr_command(
@@ -167,7 +189,6 @@ class AsrCommandTests(unittest.TestCase):
         )
         self.assertEqual(rendered, [
             "crispasr.exe", "--file", "in.wav", "--language", "ja",
-            "--flush-after", "1",
         ])
 
     def test_command_accepts_asr_prompt(self):

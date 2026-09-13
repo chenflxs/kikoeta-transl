@@ -8,6 +8,7 @@ from threading import Event, Thread
 from typing import Any
 
 from .events import EventBus
+from .kikoeta_cache import cache_completed_job
 from .cleanup import cleanup_intermediates
 from .models import AppSettings, FileResult, JobRequest, StageFlags
 from .paths import WORK_DIR
@@ -25,6 +26,8 @@ class Job:
     files: list[str]
     flags: StageFlags
     settings: AppSettings
+    source: str = "desktop"
+    cache_context: dict[str, Any] = field(default_factory=dict)
     cleanup_paths: list[str] = field(default_factory=list)
     status: str = "queued"
     created_at: str = field(default_factory=_now)
@@ -38,6 +41,7 @@ class Job:
             "job_id": self.job_id,
             "files": self.files,
             "flags": asdict(self.flags),
+            "source": self.source,
             "status": self.status,
             "created_at": self.created_at,
             "results": [item.to_dict() for item in self.results],
@@ -49,7 +53,7 @@ class JobManager:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
 
-    def create(self, request: JobRequest) -> Job:
+    def create(self, request: JobRequest, *, source: str = "desktop") -> Job:
         files = [path for path in request.files if str(path).strip()]
         if not files:
             raise ValueError("没有输入文件")
@@ -59,6 +63,8 @@ class JobManager:
             files=files,
             flags=request.flags,
             settings=settings,
+            source=source,
+            cache_context=dict(request.cache_context),
             cleanup_paths=list(request.cleanup_paths),
         )
         self._jobs[job.job_id] = job
@@ -83,6 +89,7 @@ class JobManager:
         if job is None:
             raise KeyError(job_id)
         job.stop_event.set()
+        job.bus.emit("status", stage="cancelling", message="正在停止当前阶段")
         job.bus.emit("log", message="收到取消请求")
         return job
 
@@ -129,6 +136,12 @@ class JobManager:
             job.error = str(exc)
             job.bus.emit("log", message=str(exc))
         finally:
+            try:
+                cached = cache_completed_job(job)
+                if cached:
+                    job.bus.emit("log", message=f"已缓存 {cached} 个 kikoeta 歌词结果")
+            except Exception as exc:
+                job.bus.emit("log", message=f"保存 kikoeta 缓存失败：{exc}")
             cleanup_intermediates(*job.cleanup_paths)
             job.bus.emit("job_done", status=job.status)
             job.bus.close()

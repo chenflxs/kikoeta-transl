@@ -8,10 +8,11 @@ import shutil
 import subprocess
 import tempfile
 import time
-from threading import Thread
+from threading import Event, Thread
 from pathlib import Path
 
 from ..events import EmitFn
+from ..cancellation import TaskCancelled, raise_if_cancelled, terminate_process
 from ..models import AppSettings, Cue
 from ..subtitle import parse_subtitle
 from ..tools import list_crispasr_models, popen_kwargs, resolve_crispasr_dir
@@ -27,7 +28,7 @@ DEFAULT_ASR_TEMPLATE = (
     "--vad-model firered --vad-threshold 0.5 --vad-max-speech-duration-s 6 "
     "--vad-min-silence-duration-ms 300 --max-new-tokens 224 "
     "--frequency-penalty 0.0 "
-    "--temperature 0.0 --split-on-punct --flush-after 1"
+    "--temperature 0.0 --split-on-punct"
 )
 
 
@@ -38,7 +39,9 @@ def transcribe_wav(
     *,
     emit: EmitFn | None = None,
     file: str | None = None,
+    stop_event: Event | None = None,
 ) -> list[Cue]:
+    raise_if_cancelled(stop_event)
     info = list_crispasr_models(settings)
     executable = info["executable"]
     if not executable:
@@ -47,38 +50,60 @@ def transcribe_wav(
     aligner = settings.asr.aligner or (info["aligners"][0] if info["aligners"] else "")
     if not model:
         raise FileNotFoundError("未找到 ASR 模型（.gguf）")
-    if not aligner:
+    if settings.asr.force_aligner and not aligner:
         raise FileNotFoundError("未找到 ASR aligner 模型（.gguf）")
 
     folder = resolve_crispasr_dir(settings)
     model_path = _resolve_under(folder, model)
-    aligner_path = _resolve_under(folder, aligner)
+    aligner_path = (
+        _resolve_under(folder, aligner)
+        if settings.asr.force_aligner and aligner
+        else None
+    )
 
     # CrispASR's Windows path handling is not reliable for non-ASCII parent
     # directories. Keep its staged input/output in the system temp directory.
     job_dir = Path(tempfile.mkdtemp(prefix="kt_asr_"))
-    staged = job_dir / f"input{Path(wav_path).suffix.lower()}"
-    output_base = job_dir / "transcript"
-    generated = output_base.with_suffix(".srt")
-    shutil.copyfile(wav_path, staged)
-    command = build_asr_command(
-        executable=executable,
-        model_path=model_path,
-        aligner_path=aligner_path,
-        input_file=staged,
-        output_file=output_base,
-        settings=settings,
-    )
-    _validate_options(executable, command)
-    _emit_log(emit, file, "CrispASR 已启动，正在加载模型并准备听写")
-    result = _run_with_heartbeat(command, emit=emit, file=file)
-    _emit_log(emit, file, "CrispASR 推理完成，正在读取听写结果")
-    if result.returncode != 0 or not generated.is_file() or generated.stat().st_size == 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        raise RuntimeError(f"CrispASR 失败: {detail or result.returncode}")
-    cues = parse_subtitle(generated)
-    shutil.rmtree(job_dir, ignore_errors=True)
-    return cues
+    try:
+        staged = job_dir / f"input{Path(wav_path).suffix.lower()}"
+        output_base = job_dir / "transcript"
+        generated = output_base.with_suffix(".srt")
+        shutil.copyfile(wav_path, staged)
+        raise_if_cancelled(stop_event)
+        command = build_asr_command(
+            executable=executable,
+            model_path=model_path,
+            aligner_path=aligner_path,
+            input_file=staged,
+            output_file=output_base,
+            settings=settings,
+        )
+        _validate_options(executable, command)
+        raise_if_cancelled(stop_event)
+        _emit_log(emit, file, "CrispASR 已启动，正在加载模型并准备听写")
+        result = _run_with_heartbeat(
+            command,
+            emit=emit,
+            file=file,
+            stop_event=stop_event,
+        )
+        _emit_log(emit, file, "CrispASR 推理完成，正在读取听写结果")
+        if not generated.is_file() or generated.stat().st_size == 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(f"CrispASR 失败: {detail or result.returncode}")
+        cues = parse_subtitle(generated)
+        if not cues:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(f"CrispASR 未生成有效字幕: {detail or result.returncode}")
+        if result.returncode != 0:
+            _emit_log(
+                emit,
+                file,
+                f"CrispASR 返回码为 {result.returncode}，但已生成 {len(cues)} 条有效字幕，继续导出",
+            )
+        return cues
+    finally:
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 def _run_with_heartbeat(
@@ -86,6 +111,7 @@ def _run_with_heartbeat(
     *,
     emit: EmitFn | None,
     file: str | None,
+    stop_event: Event | None = None,
     idle_notice_after: float = 30.0,
     idle_notice_interval: float = 60.0,
 ) -> subprocess.CompletedProcess[str]:
@@ -130,6 +156,10 @@ def _run_with_heartbeat(
     notice_count = 0
     streams_closed = 0
     while True:
+        if stop_event is not None and stop_event.is_set():
+            terminate_process(process)
+            _emit_log(emit, file, "CrispASR 已停止")
+            raise TaskCancelled()
         now = time.monotonic()
         wait_for = 0.25
         if process.poll() is None:
@@ -215,7 +245,7 @@ def build_asr_command(
     *,
     executable: str,
     model_path: Path,
-    aligner_path: Path,
+    aligner_path: Path | None,
     input_file: Path,
     output_file: Path,
     settings: AppSettings,
@@ -233,8 +263,8 @@ def build_asr_command(
             input_file=input_file,
             output_file=output_file,
         )
-        if "--flush-after" not in command:
-            command.extend(["--flush-after", "1"])
+        if not settings.asr.force_aligner:
+            command = _remove_aligner_options(command)
         return command
     return _command_from_settings(
         executable=executable,
@@ -250,7 +280,7 @@ def _command_from_settings(
     *,
     executable: str,
     model_path: Path,
-    aligner_path: Path,
+    aligner_path: Path | None,
     input_file: Path,
     output_file: Path,
     settings: AppSettings,
@@ -260,9 +290,11 @@ def _command_from_settings(
         executable,
         "--backend", asr.backend or "qwen3-1.7b",
         "--model", str(model_path),
-        "--aligner-model", str(aligner_path),
     ]
     if asr.force_aligner:
+        if aligner_path is None:
+            raise FileNotFoundError("未找到 ASR aligner 模型（.gguf）")
+        command.extend(["--aligner-model", str(aligner_path)])
         command.append("--force-aligner")
     command.extend(
         [
@@ -294,9 +326,10 @@ def _command_from_settings(
             "--max-new-tokens", str(int(asr.max_new_tokens)),
             "--frequency-penalty", _fmt_num(asr.frequency_penalty),
             "--temperature", _fmt_num(asr.temperature),
-            "--flush-after", str(max(1, int(asr.flush_after))),
         ]
     )
+    if int(asr.flush_after) > 0:
+        command.extend(["--flush-after", str(int(asr.flush_after))])
     if asr.split_on_punct:
         command.append("--split-on-punct")
     return command
@@ -315,7 +348,7 @@ def _render_template(
     template: str,
     executable: str,
     model_path: Path,
-    aligner_path: Path,
+    aligner_path: Path | None,
     backend: str,
     language: str,
     prompt: str,
@@ -325,7 +358,7 @@ def _render_template(
     replacements = {
         "$crispasr_executable": executable,
         "$model_file": str(model_path),
-        "$aligner_file": str(aligner_path),
+        "$aligner_file": str(aligner_path) if aligner_path else "",
         "$backend": backend,
         "$language": language or "auto",
         "$prompt": prompt,
@@ -342,6 +375,25 @@ def _render_template(
             for token in tokens
         ]
     return shlex.split(rendered)
+
+
+def _remove_aligner_options(command: list[str]) -> list[str]:
+    """Remove aligner options when forced alignment is disabled."""
+    names = {"--aligner-model", "-am", "--force-aligner", "-falign"}
+    cleaned: list[str] = []
+    skip_value = False
+    for token in command:
+        if skip_value:
+            skip_value = False
+            continue
+        if token in names:
+            if token in {"--aligner-model", "-am"}:
+                skip_value = True
+            continue
+        if any(token.startswith(f"{name}=") for name in {"--aligner-model", "-am"}):
+            continue
+        cleaned.append(token)
+    return cleaned
 
 
 def _fmt_num(value: float | int) -> str:

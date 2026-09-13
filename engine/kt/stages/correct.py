@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import queue
 import re
+from threading import Event, Thread
 
 from ..subtitle import normalize_cue_timeline
 
 from ..events import EmitFn
+from ..cancellation import TaskCancelled, raise_if_cancelled
 from ..models import AppSettings, CorrectionSettings, Cue
 
 
@@ -68,7 +71,9 @@ def correct_cues(
     *,
     emit: EmitFn | None = None,
     file: str | None = None,
+    stop_event: Event | None = None,
 ) -> list[Cue]:
+    raise_if_cancelled(stop_event)
     endpoint = settings.correct
     if not endpoint.base_url or not endpoint.model:
         raise RuntimeError("未配置矫正模型的 API 地址与模型名")
@@ -90,6 +95,7 @@ def correct_cues(
     messages: list[str] = []
     changed_total = 0
     for offset in range(0, len(cues), CORRECTION_BATCH_SIZE):
+        raise_if_cancelled(stop_event)
         batch = cues[offset : offset + CORRECTION_BATCH_SIZE]
         full_context = _full_context(cues, messages)
         batch_number = offset // CORRECTION_BATCH_SIZE + 1
@@ -102,7 +108,13 @@ def correct_cues(
         )
         try:
             user_text = _build_correction_input(full_context, batch, offset)
-            content = _chat(endpoint, user_text, settings.proxy)
+            content = _chat_with_cancellation(
+                endpoint,
+                user_text,
+                settings.proxy,
+                stop_event,
+            )
+            raise_if_cancelled(stop_event)
             _emit_log(
                 emit,
                 file,
@@ -122,6 +134,9 @@ def correct_cues(
                 file,
                 f"矫正批次完成：第 {batch_number}/{total_batches} 批，校验 {len(batch)} 条，修改 {changed} 条",
             )
+        except TaskCancelled:
+            _emit_log(emit, file, "矫正已停止")
+            raise
         except Exception as exc:
             _emit_log(
                 emit,
@@ -153,6 +168,42 @@ def _emit_log(emit: EmitFn | None, file: str | None, message: str) -> None:
     if file:
         payload["file"] = file
     emit("log", **payload)
+
+
+def _chat_with_cancellation(
+    endpoint: CorrectionSettings,
+    user_text: str,
+    proxy: str,
+    stop_event: Event | None,
+) -> str:
+    """Return promptly when a synchronous provider request is cancelled.
+
+    httpx's one-shot helpers do not expose a request handle that another
+    thread can safely close. Keep the request in a daemon worker and stop
+    waiting for it when the job is cancelled; its late response is discarded.
+    """
+    if stop_event is None:
+        return _chat(endpoint, user_text, proxy)
+    result: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
+
+    def request() -> None:
+        try:
+            result.put((True, _chat(endpoint, user_text, proxy)))
+        except BaseException as exc:
+            result.put((False, exc))
+
+    Thread(target=request, name="kt-correction-request", daemon=True).start()
+    while True:
+        raise_if_cancelled(stop_event)
+        try:
+            success, payload = result.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        if success:
+            return str(payload)
+        if isinstance(payload, BaseException):
+            raise payload
+        raise RuntimeError("矫正请求未返回有效结果")
 
 
 def test_correct(settings: AppSettings) -> str:

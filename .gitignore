@@ -65,6 +65,7 @@ start build.bat
 *.swo
 *.lnk
 test/
+tests/
 Thumbs.db
 Desktop.ini
 .DS_Store

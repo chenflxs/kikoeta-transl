@@ -7,7 +7,7 @@ Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间
 
 - 导入音频、视频，以及 `SRT`、`LRC`、`VTT`、`ASS`、`SSA` 字幕。
 - 使用 ffmpeg 转码并由 CrispASR 听写；已有字幕会保留原有时间轴。
-- 可选使用 OpenAI 兼容接口矫正听写文本，并由内置 GalTransl 翻译。
+- 可选使用 OpenAI 兼容接口矫正听写文本，并由集成的 [GalTransl](https://github.com/XD2333/GalTransl) 翻译核心完成翻译。
 - 导出目标语言或双语 `LRC` / `SRT`，可选写入 kikoeta 歌词库。
 - 提供 Flutter Windows 界面、命令行和局域网任务 API。
 
@@ -89,12 +89,20 @@ cd bin/llama
 
 在线服务只需在“模型”页填写服务商提供的 OpenAI 兼容地址、模型名和 API Key。个人推荐优先尝试 `ds-v4-pro` 与 `kimi-k2.5`。(这只是个人使用偏好，并不保证是最适合或最好的模型；如果发现更适合字幕翻译的模型，欢迎[提交 Issue](https://github.com/chenflxs/kikoeta-transl/issues/new)分享)。
 
+## 与 GalTransl 的关系
+
+本项目的翻译能力建立在开源项目 [XD2333/GalTransl](https://github.com/XD2333/GalTransl) 的工作之上，并在 `engine/GalTransl/` 中保留了一份为本项目工作流适配过的源码。感谢 GalTransl 的作者和贡献者提供翻译框架、提示词、字典、缓存及质量检查等基础能力；其完整功能、使用文档和最新版本请以上游的 [README](https://github.com/XD2333/GalTransl#readme)、[Wiki](https://github.com/XD2333/GalTransl/wiki) 与 [Releases](https://github.com/XD2333/GalTransl/releases) 为准。
+
+Kikoeta Transl 主要在 GalTransl 之外增加音视频转码、语音识别、字幕时间轴处理、Kikoeta 歌词库导出，以及面向这些流程的 Windows 界面、命令行和任务 API；同时对所集成的 GalTransl 代码做了兼容与衔接调整。因此，本仓库中的行为可能与上游原版不同，也不代表 GalTransl 官方版本或官方立场。两个项目相互独立，不存在官方隶属、背书或合作关系；除非另有明确说明，各项目维护者只对各自仓库中的代码和发布负责。
+
+如问题只在 Kikoeta Transl 中出现，请在[本项目 Issues](https://github.com/chenflxs/kikoeta-transl/issues/new)反馈；如能在未经本项目修改的 GalTransl 最新版中复现，再按上游的贡献说明向 GalTransl 反馈。提交问题时请注明使用的项目、版本、运行方式和复现步骤，避免把集成层问题归因给上游。使用 AI 生成的翻译成果时，也请遵守原作品版权及模型/服务商条款，并清楚标注“AI 翻译”或“机器翻译”，不要将未经完整校对的结果表述为人工汉化。
+
 ## 目录说明
 
 ```text
 app/                 Flutter Windows 界面
 engine/              Python 服务、HTTP API 与处理管线
-engine/GalTransl/    内置 GalTransl、插件、字典和翻译规范
+engine/GalTransl/    经本项目适配的 GalTransl 源码、插件、字典和翻译规范
 bin/                 本地可执行文件与模型（不提交）
 docs/                开发与功能说明
 output/              默认导出目录（不提交）
@@ -104,4 +112,4 @@ output/              默认导出目录（不提交）
 
 ## 许可
 
-[GPL-3.0](LICENSE)。内置的 GalTransl 及其他第三方组件仍受各自许可证约束。
+[GPL-3.0](LICENSE)。集成的 GalTransl 源码沿用其 [GPL-3.0 许可证](engine/GalTransl/LICENSE)；其他第三方组件仍受各自许可证约束。项目名称、链接和致谢用于说明来源，不表示原作者对本项目提供背书或担保。

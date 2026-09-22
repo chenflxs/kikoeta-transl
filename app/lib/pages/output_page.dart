@@ -9,6 +9,8 @@ const _presets = [
   ('target_srt', '目标 SRT', '单语字幕'),
   ('bilingual_lrc', '双语 LRC', '同一文件内译文 + 原文'),
   ('bilingual_srt', '双语 SRT', '同一文件内译文 + 原文'),
+  ('source_target_lrc', '原文 + 目标 LRC', '同一文件内原文 + 译文'),
+  ('source_target_srt', '原文 + 目标 SRT', '同一文件内原文 + 译文'),
 ];
 
 class OutputPage extends StatefulWidget {
@@ -63,7 +65,8 @@ class _OutputPageState extends State<OutputPage> {
 
   Future<void> _save() async {
     final next = Map<String, dynamic>.from(widget.app.settings);
-    final bilingual = preset.startsWith('bilingual_');
+    final bilingual =
+        preset.startsWith('bilingual_') || preset.startsWith('source_target_');
     final fmt = preset.endsWith('srt') ? 'srt' : 'lrc';
     next['output'] = {
       ...(next['output'] as Map? ?? {}),

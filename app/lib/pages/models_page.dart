@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -209,6 +211,33 @@ class _ModelsPageState extends State<ModelsPage> {
     }
   }
 
+  Future<void> _openAsrDirectory() async {
+    final path = '${_asr['dir'] ?? ''}'.trim();
+    if (path.isEmpty || !Directory(path).existsSync()) {
+      _toast(path.isEmpty ? '未获取到 ASR 模型路径' : 'ASR 模型路径不存在：$path');
+      return;
+    }
+    try {
+      if (Platform.isWindows) {
+        await Process.start(
+          'explorer.exe',
+          [path],
+          mode: ProcessStartMode.detached,
+        );
+      } else if (Platform.isMacOS) {
+        await Process.start('open', [path], mode: ProcessStartMode.detached);
+      } else {
+        await Process.start(
+          'xdg-open',
+          [path],
+          mode: ProcessStartMode.detached,
+        );
+      }
+    } catch (e) {
+      _toast('无法打开 ASR 模型路径：$e');
+    }
+  }
+
   Future<void> _queryOpenAi({required bool correct}) async {
     final base = (correct ? correctBase : transBase).text.trim();
     final key = (correct ? correctKey : transKey).text.trim();
@@ -319,16 +348,29 @@ class _ModelsPageState extends State<ModelsPage> {
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: queryingAsr ? null : _queryAsr,
-                      icon: queryingAsr
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh, size: 16),
-                      label: Text(queryingAsr ? '正在扫描…' : '查询模型列表'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton.icon(
+                          onPressed: queryingAsr ? null : _queryAsr,
+                          icon: queryingAsr
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 16),
+                          label: Text(queryingAsr ? '正在扫描…' : '查询模型列表'),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          onPressed: _openAsrDirectory,
+                          icon: const Icon(Icons.folder_open, size: 16),
+                          label: const Text('打开模型路径'),
+                        ),
+                      ],
                     ),
                   ),
                 ),

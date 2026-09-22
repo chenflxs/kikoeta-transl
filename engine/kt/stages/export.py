@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..models import AppSettings, Cue, normalize_output_preset, preset_bilingual, preset_format
+from ..models import (
+    AppSettings,
+    Cue,
+    normalize_output_preset,
+    preset_bilingual,
+    preset_format,
+    preset_source_first,
+)
 from ..paths import ROOT_DIR
 from ..subtitle import extract_work_id
 
@@ -26,18 +33,29 @@ def export_cues(
     )
     fmt = preset_format(preset)
     bilingual = preset_bilingual(preset)
+    source_first = preset_source_first(preset)
     suffix = str(settings.output.suffix or "").strip()
     if suffix and not suffix.startswith("."):
         suffix = "." + suffix
     output_stem = f"{stem}{suffix}"
     dest = output_dir / f"{output_stem}.{fmt}"
     if bilingual and src_cues:
-        _write_bilingual(dest, src_cues, cues, fmt)
+        _write_bilingual(dest, src_cues, cues, fmt, source_first=source_first)
     else:
         _write_file(dest, cues, fmt)
     written = [str(dest)]
     if settings.output.write_kikoeta_lyrics:
-        written.extend(_write_kikoeta(cues, source, settings, output_stem, [fmt], src_cues if bilingual else None))
+        written.extend(
+            _write_kikoeta(
+                cues,
+                source,
+                settings,
+                output_stem,
+                [fmt],
+                src_cues if bilingual else None,
+                source_first=source_first,
+            )
+        )
     return written
 
 
@@ -55,6 +73,8 @@ def _write_kikoeta(
     stem: str,
     formats: list[str],
     src_cues: list[Cue] | None = None,
+    *,
+    source_first: bool = False,
 ) -> list[str]:
     work_id = extract_work_id(str(source), stem, settings.output.kikoeta_root)
     root = settings.output.kikoeta_root.strip() or str(ROOT_DIR)
@@ -66,7 +86,7 @@ def _write_kikoeta(
     for fmt in formats:
         dest = folder / f"{stem}.{fmt}"
         if src_cues:
-            _write_bilingual(dest, src_cues, cues, fmt)
+            _write_bilingual(dest, src_cues, cues, fmt, source_first=source_first)
         else:
             _write_file(dest, cues, fmt)
         written.append(str(dest))
@@ -82,10 +102,18 @@ def _write_file(path: Path, cues: list[Cue], fmt: str) -> None:
         path.write_text(_to_srt(cues), encoding="utf-8")
 
 
-def _write_bilingual(path: Path, src: list[Cue], dst: list[Cue], fmt: str) -> None:
+def _write_bilingual(
+    path: Path,
+    src: list[Cue],
+    dst: list[Cue],
+    fmt: str,
+    *,
+    source_first: bool = False,
+) -> None:
     merged: list[Cue] = []
     for left, right in zip(src, dst):
-        message = f"{right.message}\n{left.message}" if fmt != "lrc" else f"{right.message} {left.message}"
+        first, second = (left, right) if source_first else (right, left)
+        message = f"{first.message}\n{second.message}" if fmt != "lrc" else f"{first.message} {second.message}"
         merged.append(Cue(start=right.start, end=right.end, message=message, src_message=left.message))
     _write_file(path, merged, fmt)
 

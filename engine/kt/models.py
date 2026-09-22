@@ -161,7 +161,14 @@ class TranslateSettings:
     enable_thinking: bool | None = None
 
 
-OUTPUT_PRESETS = ("target_lrc", "target_srt", "bilingual_lrc", "bilingual_srt")
+OUTPUT_PRESETS = (
+    "target_lrc",
+    "target_srt",
+    "bilingual_lrc",
+    "bilingual_srt",
+    "source_target_lrc",
+    "source_target_srt",
+)
 
 
 def normalize_output_preset(preset: str = "", formats: list[str] | None = None, bilingual: bool | None = None) -> str:
@@ -173,6 +180,8 @@ def normalize_output_preset(preset: str = "", formats: list[str] | None = None, 
         "targetsrt": "target_srt",
         "bilinguallrc": "bilingual_lrc",
         "bilingualsrt": "bilingual_srt",
+        "sourcetargetlrc": "source_target_lrc",
+        "sourcetargetsrt": "source_target_srt",
     }
     value = aliases.get(value, value)
     if value in OUTPUT_PRESETS:
@@ -188,7 +197,12 @@ def preset_format(preset: str) -> str:
 
 
 def preset_bilingual(preset: str) -> bool:
-    return str(preset).startswith("bilingual_")
+    value = str(preset)
+    return value.startswith("bilingual_") or value.startswith("source_target_")
+
+
+def preset_source_first(preset: str) -> bool:
+    return str(preset).startswith("source_target_")
 
 
 @dataclass

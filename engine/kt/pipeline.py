@@ -73,7 +73,13 @@ def process_file(
         for item in cues:
             item.src_message = item.message
 
-        if flags.enable_correct:
+        damaged_asr = kind == "media" and any("\ufffd" in item.message for item in cues)
+        if damaged_asr:
+            damaged_count = sum("\ufffd" in item.message for item in cues)
+            emit("log", file=path, message=f"ASR 听写结果有 {damaged_count} 条字幕包含损坏字符 �，自动启用矫正")
+        needs_correct = flags.enable_correct or damaged_asr
+
+        if needs_correct:
             _raise_if_stopped(stop_event)
             emit("status", file=path, stage="correcting", message="小模型矫正")
             result.stage = "correcting"
@@ -86,6 +92,10 @@ def process_file(
                 stop_event=stop_event,
             )
             _raise_if_stopped(stop_event)
+            if damaged_asr:
+                remaining = sum("\ufffd" in item.message for item in cues)
+                if remaining:
+                    emit("log", file=path, message=f"矫正完成后仍有 {remaining} 条字幕包含 �，无法从损坏字节确定原文，继续导出")
             src_cues = [
                 Cue(start=item.start, end=item.end,
                     message=item.src_message or item.message,
@@ -114,7 +124,7 @@ def process_file(
         if not settings.output.suffix:
             if flags.enable_translate:
                 suffix = _language_suffix(settings.target_lang)
-            elif flags.enable_correct:
+            elif needs_correct:
                 suffix = ".fix"
             else:
                 suffix = ""

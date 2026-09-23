@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -23,6 +25,8 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
   bool translateThinkingEnabled = true;
   late String promptMode;
   bool settingsSynced = false;
+  late String _savedDraft;
+  late final VoidCallback _unregisterPageSaver;
 
   @override
   void initState() {
@@ -50,19 +54,25 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     tokenLimit = TextEditingController(
       text: _text(translate['token_limit'], '1024'),
     );
-    translateThinkingEnabled = _boolValue(
-      translate['enable_thinking'],
-      true,
-    );
+    translateThinkingEnabled = _boolValue(translate['enable_thinking'], true);
     promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
         ? 'overwrite'
         : 'append';
+    _savedDraft = _draft();
+    _unregisterPageSaver = widget.app.registerPageSaver(
+      3,
+      () => _save(auto: true),
+    );
     widget.app.addListener(_syncSettings);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncSettings());
   }
 
   void _syncSettings() {
     if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
+    if (_draft() != _savedDraft) {
+      settingsSynced = true;
+      return;
+    }
     final settings = widget.app.settings;
     final correct = (settings['correct'] as Map?) ?? {};
     final translate = (settings['translate'] as Map?) ?? {};
@@ -76,18 +86,30 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       contextNum.text = _text(translate['context_num'], '10');
       batchSize.text = _text(translate['batch_size'], '10');
       tokenLimit.text = _text(translate['token_limit'], '1024');
-      translateThinkingEnabled = _boolValue(
-        translate['enable_thinking'],
-        true,
-      );
+      translateThinkingEnabled = _boolValue(translate['enable_thinking'], true);
       promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
           ? 'overwrite'
           : 'append';
     });
+    _savedDraft = _draft();
   }
+
+  String _draft() => jsonEncode([
+    correctPrompt.text,
+    correctTemperature.text,
+    correctMaxTokens.text,
+    correctThinkingEnabled,
+    translatePrompt.text,
+    contextNum.text,
+    batchSize.text,
+    tokenLimit.text,
+    translateThinkingEnabled,
+    promptMode,
+  ]);
 
   @override
   void dispose() {
+    _unregisterPageSaver();
     widget.app.removeListener(_syncSettings);
     correctPrompt.dispose();
     correctTemperature.dispose();
@@ -121,26 +143,39 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     return fallback;
   }
 
-  Future<void> _save() async {
-    final next = Map<String, dynamic>.from(widget.app.settings);
-    next['correct'] = {
-      ...(next['correct'] as Map? ?? {}),
-      'prompt': correctPrompt.text,
-      'temperature': _double(correctTemperature.text, 0.2),
-      'max_tokens': _int(correctMaxTokens.text, 4096),
-      'enable_thinking': correctThinkingEnabled,
-    };
-    next['translate'] = {
-      ...(next['translate'] as Map? ?? {}),
-      'prompt_mode': promptMode,
-      'prompt': translatePrompt.text,
-      'context_num': _int(contextNum.text, 10),
-      'batch_size': _int(batchSize.text, 10),
-      'token_limit': _int(tokenLimit.text, 1024),
-      'enable_thinking': translateThinkingEnabled,
-    };
-    await widget.app.persistSettings(next);
-    if (mounted) {
+  Future<void> _save({bool auto = false}) async {
+    final draft = _draft();
+    if (auto && draft == _savedDraft) return;
+    final correctPromptValue = correctPrompt.text;
+    final temperature = _double(correctTemperature.text, 0.2);
+    final maxTokens = _int(correctMaxTokens.text, 4096);
+    final correctThinking = correctThinkingEnabled;
+    final translatePromptValue = translatePrompt.text;
+    final contextCount = _int(contextNum.text, 10);
+    final batch = _int(batchSize.text, 10);
+    final tokens = _int(tokenLimit.text, 1024);
+    final translateThinking = translateThinkingEnabled;
+    final mode = promptMode;
+    await widget.app.updateSettings((next) {
+      next['correct'] = {
+        ...(next['correct'] as Map? ?? {}),
+        'prompt': correctPromptValue,
+        'temperature': temperature,
+        'max_tokens': maxTokens,
+        'enable_thinking': correctThinking,
+      };
+      next['translate'] = {
+        ...(next['translate'] as Map? ?? {}),
+        'prompt_mode': mode,
+        'prompt': translatePromptValue,
+        'context_num': contextCount,
+        'batch_size': batch,
+        'token_limit': tokens,
+        'enable_thinking': translateThinking,
+      };
+    });
+    _savedDraft = draft;
+    if (!auto && mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('模型参数已保存')));
@@ -226,7 +261,10 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton(onPressed: _save, child: const Text('保存')),
+          child: FilledButton(
+            onPressed: () => _save(),
+            child: const Text('保存'),
+          ),
         ),
       ],
     );

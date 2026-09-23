@@ -27,7 +27,7 @@ DEFAULT_ASR_TEMPLATE = (
     "--aligner-model $aligner_file --force-aligner --language $language "
     "--output-srt --output-file $output_file --file $input_file --vad "
     "--vad-model firered --vad-threshold 0.5 --vad-max-speech-duration-s 6 "
-    "--vad-min-silence-duration-ms 300 --max-new-tokens 224 "
+    "--vad-min-silence-duration-ms 300 --max-new-tokens 512 "
     "--frequency-penalty 0.0 "
     "--temperature 0.0 --flush-after 1 --split-on-punct"
 )
@@ -98,11 +98,23 @@ def transcribe_wav(
             on_cue=streamed_cues.append,
         )
         _emit_log(emit, file, "CrispASR 推理完成，正在读取听写结果")
-        file_cues = (
-            parse_subtitle(generated)
-            if generated.is_file() and generated.stat().st_size > 0
-            else []
-        )
+        file_cues: list[Cue] = []
+        if generated.is_file() and generated.stat().st_size > 0:
+            try:
+                file_cues = _parse_generated_cues(
+                    generated,
+                    emit=emit,
+                    file=file,
+                )
+            except (OSError, UnicodeError, ValueError) as exc:
+                if not streamed_cues:
+                    raise RuntimeError(f"CrispASR 听写结果读取失败: {exc}") from exc
+                _emit_log(
+                    emit,
+                    file,
+                    f"CrispASR 听写结果文件读取失败，已使用实时捕获的 "
+                    f"{len(streamed_cues)} 条字幕继续处理: {exc}",
+                )
         cues = file_cues if len(file_cues) >= len(streamed_cues) else streamed_cues
         if not cues:
             detail = (result.stderr or result.stdout or "").strip()
@@ -116,6 +128,25 @@ def transcribe_wav(
         return cues
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)
+
+
+def _parse_generated_cues(
+    path: Path,
+    *,
+    emit: EmitFn | None,
+    file: str | None,
+) -> list[Cue]:
+    """Read CrispASR output while containing its occasional invalid UTF-8."""
+    try:
+        return parse_subtitle(path)
+    except UnicodeDecodeError as exc:
+        _emit_log(
+            emit,
+            file,
+            "CrispASR 听写结果包含非法 UTF-8 字节"
+            f"（位置 {exc.start}-{exc.end}），已用 � 替换损坏字符并继续处理",
+        )
+        return parse_subtitle(path, errors="replace")
 
 
 def _run_with_heartbeat(

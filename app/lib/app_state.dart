@@ -10,6 +10,10 @@ class AppState extends ChangeNotifier {
   final EngineClient engine;
   final ValueNotifier<int> tabNotifier = ValueNotifier(0);
   final ValueNotifier<String> themeNotifier = ValueNotifier('system');
+  final Map<int, Future<void> Function()> _pageSavers = {};
+  Future<void> _settingsWrite = Future<void>.value();
+  int _settingsRevision = 0;
+  bool _switchingTab = false;
 
   int tab = 0;
   bool engineOnline = false;
@@ -53,7 +57,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> reload() async {
-    settings = await engine.settings();
+    final revision = _settingsRevision;
+    final loadedSettings = await engine.settings();
+    if (revision == _settingsRevision) settings = loadedSettings;
     themeNotifier.value = _themeValue(settings['theme']);
     try {
       tools = await engine.tools();
@@ -72,7 +78,22 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void selectTab(int index) {
+  VoidCallback registerPageSaver(int index, Future<void> Function() save) {
+    _pageSavers[index] = save;
+    return () {
+      if (identical(_pageSavers[index], save)) _pageSavers.remove(index);
+    };
+  }
+
+  Future<void> selectTab(int index) async {
+    if (index == tab || _switchingTab) return;
+    _switchingTab = true;
+    try {
+      await _pageSavers[tab]?.call();
+      await _settingsWrite;
+    } finally {
+      _switchingTab = false;
+    }
     tab = index;
     tabNotifier.value = index;
     notifyListeners();
@@ -96,13 +117,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> persistFlags() async {
-    final next = Map<String, dynamic>.from(settings);
-    next['flags'] = {
-      'enable_correct': enableCorrect,
-      'enable_translate': enableTranslate,
-    };
-    settings = await engine.saveSettings(next);
-    notifyListeners();
+    await updateSettings((next) {
+      next['flags'] = {
+        'enable_correct': enableCorrect,
+        'enable_translate': enableTranslate,
+      };
+    });
   }
 
   void setStageFlag(String name, bool value) {
@@ -112,10 +132,17 @@ class AppState extends ChangeNotifier {
     unawaited(persistFlags());
   }
 
-  Future<void> persistSettings(Map<String, dynamic> next) async {
-    settings = await engine.saveSettings(next);
-    themeNotifier.value = _themeValue(settings['theme']);
-    notifyListeners();
+  Future<void> updateSettings(void Function(Map<String, dynamic>) update) {
+    final pending = _settingsWrite.onError((_, _) {}).then((_) async {
+      final next = Map<String, dynamic>.from(settings);
+      update(next);
+      _settingsRevision++;
+      settings = await engine.saveSettings(next);
+      themeNotifier.value = _themeValue(settings['theme']);
+      notifyListeners();
+    });
+    _settingsWrite = pending;
+    return pending;
   }
 
   void previewTheme(String value) {

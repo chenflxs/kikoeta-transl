@@ -21,6 +21,7 @@ from kt.kikoeta_cache import cached_file, list_cached_results
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
+from kt.recent import delete_translation_cache, list_recent_jobs
 from kt.settings import load_settings, save_settings
 from kt.stages.correct import test_correct
 from kt.llama_runtime import LLAMA_RUNTIME
@@ -94,6 +95,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/jobs":
             self._json({"jobs": [job.to_dict() for job in MANAGER.list()]})
+            return
+        if path == "/api/recent":
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._error(403, "recent jobs are only available from localhost")
+                return
+            active = {job.job_id for job in MANAGER.list()
+                      if job.status in {"queued", "running"}}
+            self._json({"entries": list_recent_jobs(active)})
             return
         if path.startswith("/api/jobs/"):
             parts = path.split("/")
@@ -272,6 +281,32 @@ class Handler(BaseHTTPRequestHandler):
                 self._error(404, str(exc))
             return
         self._error(404, "not found")
+
+    def do_DELETE(self) -> None:
+        path = urlparse(self.path).path.rstrip("/")
+        if not self._allow_request(path):
+            return
+        parts = path.split("/")
+        if len(parts) != 5 or parts[1:3] != ["api", "recent"] or parts[4] != "cache":
+            self._error(404, "not found")
+            return
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._error(403, "recent jobs are only available from localhost")
+            return
+        job_id = parts[3]
+        job = MANAGER.get(job_id)
+        if job is not None and job.status in {"queued", "running"}:
+            self._error(409, "任务仍在运行，不能清理缓存")
+            return
+        try:
+            freed = delete_translation_cache(job_id)
+        except (ValueError, FileNotFoundError):
+            self._error(404, "cache not found")
+            return
+        except OSError as exc:
+            self._error(500, f"清理缓存失败：{exc}")
+            return
+        self._json({"ok": True, "freed_bytes": freed})
 
     def _remote_cache_list(self) -> None:
         entries = list_cached_results()

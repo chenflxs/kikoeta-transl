@@ -8,7 +8,8 @@ Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间
 - 导入音频、视频，以及 `SRT`、`LRC`、`VTT`、`ASS`、`SSA` 字幕。
 - 使用 ffmpeg 转码并由 CrispASR 听写；已有字幕会保留原有时间轴。
 - 可选使用 OpenAI 兼容接口矫正听写文本，并由集成的 [GalTransl](https://github.com/XD2333/GalTransl) 翻译核心完成翻译。
-- 导出目标语言或双语 `LRC` / `SRT`，可选写入 kikoeta 歌词库。
+- 导出目标语言或双语 `LRC` / `SRT`；由 kikoeta 发起的任务会将结果写入其歌词库。
+- “最近”页可查看翻译成果，并按任务清理 GalTransl 工作缓存，已导出的文件不会被删除。
 - 提供 Flutter Windows 界面、命令行和局域网任务 API。
 
 ```text

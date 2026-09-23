@@ -29,6 +29,7 @@ class LlamaRuntime:
         self._model_path: Path | None = None
         self._model_id = ""
         self._users = 0
+        self._job_scopes = 0
         self._error = ""
 
     @contextmanager
@@ -39,6 +40,19 @@ class LlamaRuntime:
         finally:
             self.release()
 
+    @contextmanager
+    def job_scope(self):
+        """Keep an already-started server available across stages of one job."""
+        with self._lock:
+            self._job_scopes += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._job_scopes -= 1
+                if not self._users and not self._job_scopes:
+                    self._stop_locked()
+
     def acquire(self, settings: AppSettings, stop_event: Event | None = None) -> str:
         with self._lock:
             model_path, executable = self._resolve_selection(settings)
@@ -48,13 +62,18 @@ class LlamaRuntime:
                     raise RuntimeError("本地 Llama 正被其他任务使用，暂时无法切换模型")
                 self._stop_locked()
             if self._process is None:
+                if self._users:
+                    raise RuntimeError("本地 Llama 已意外退出，正在等待旧请求结束后重试")
                 self._start_locked(executable, model_path, stop_event)
             self._users += 1
             return self._model_id
 
     def release(self) -> None:
         with self._lock:
-            self._users = max(0, self._users - 1)
+            if self._users:
+                self._users -= 1
+                if not self._users and not self._job_scopes:
+                    self._stop_locked()
 
     def shutdown(self) -> None:
         with self._lock:
@@ -163,7 +182,6 @@ class LlamaRuntime:
             self._process = None
             self._model_path = None
             self._model_id = ""
-            self._users = 0
             self._error = f"llama-server 已退出，退出码 {code}"
 
     def _stop_locked(self) -> None:

@@ -66,6 +66,9 @@ start build.bat
 *.lnk
 test/
 tests/
+!app/test/
+app/test/*
+!app/test/auto_save_test.dart
 Thumbs.db
 Desktop.ini
 .DS_Store

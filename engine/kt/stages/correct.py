@@ -32,6 +32,7 @@ SYSTEM_PROMPT = """你是 ASR 文本保守纠错器。输入包含完整歌词�
 - 长音（ー）、促音（っ）、拨音（ん/ン）以及清浊音的明确误识。
 - 形近假名：い/り、つ/っ、へ/ベ/ペ、れ/ね/わ。
 - 片假名乱码中混入明显日语助词或语法成分时，可按固定搭配重构，例如“デヒトトビ”在明确语境下还原为“でひとっ飛び”。
+- “�”表示听写时损坏的字符。优先检查含“�”的条目；只有上下文能唯一确定原字时才补全，否则保留“�”，不要猜测。
 - 固定搭配明显错误时，只有正确写法唯一且证据充分才修正，例如“バチ当たり”。
 
 禁止修正：
@@ -78,7 +79,7 @@ def correct_cues(
     if not cues:
         _emit_log(emit, file, "矫正跳过：没有可用字幕条目")
         return []
-    if settings.correct.provider == "local_llama":
+    if settings.correct.provider == "local_llama" and settings.llama_model.strip():
         from ..llama_runtime import local_llama_session
 
         _emit_log(emit, file, "正在准备本地 Llama 模型")
@@ -98,13 +99,42 @@ def correct_cues(
                 file=file,
                 stop_event=stop_event,
             )
+    if (
+        settings.correct.provider == "online"
+        and settings.correct.base_url.strip()
+        and settings.correct.model.strip()
+    ):
+        endpoint = settings.correct
+    elif settings.translate.provider == "local_llama" and settings.llama_model.strip():
+        from ..llama_runtime import local_llama_session
+
+        _emit_log(emit, file, "未配置矫正模型，正在使用翻译模型的本地 Llama API 矫正")
+        with local_llama_session(settings, stop_event) as (_, openai_base, model_id):
+            endpoint = replace(
+                settings.correct,
+                base_url=openai_base,
+                model=model_id,
+                api_key="",
+            )
+            return _correct_cues_with_endpoint(
+                cues, endpoint, "", emit=emit, file=file, stop_event=stop_event,
+            )
+    elif (
+        settings.translate.provider == "online"
+        and settings.translate.openai.base_url.strip()
+        and settings.translate.openai.model.strip()
+    ):
+        _emit_log(emit, file, "未配置矫正模型，正在使用翻译模型 API 矫正")
+        endpoint = replace(
+            settings.correct,
+            base_url=settings.translate.openai.base_url,
+            model=settings.translate.openai.model,
+            api_key=settings.translate.openai.api_key,
+        )
+    else:
+        raise RuntimeError("未配置矫正模型，也没有可用的翻译模型 API；请在模型设置中配置其中之一")
     return _correct_cues_with_endpoint(
-        cues,
-        settings.correct,
-        settings.proxy,
-        emit=emit,
-        file=file,
-        stop_event=stop_event,
+        cues, endpoint, settings.proxy, emit=emit, file=file, stop_event=stop_event,
     )
 
 

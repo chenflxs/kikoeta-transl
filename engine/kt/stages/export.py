@@ -10,8 +10,6 @@ from ..models import (
     preset_format,
     preset_source_first,
 )
-from ..paths import ROOT_DIR
-from ..subtitle import extract_work_id
 
 
 def export_cues(
@@ -43,20 +41,7 @@ def export_cues(
         _write_bilingual(dest, src_cues, cues, fmt, source_first=source_first)
     else:
         _write_file(dest, cues, fmt)
-    written = [str(dest)]
-    if settings.output.write_kikoeta_lyrics:
-        written.extend(
-            _write_kikoeta(
-                cues,
-                source,
-                settings,
-                output_stem,
-                [fmt],
-                src_cues if bilingual else None,
-                source_first=source_first,
-            )
-        )
-    return written
+    return [str(dest)]
 
 
 def resolve_output_dir(source: Path, settings: AppSettings) -> Path:
@@ -64,33 +49,6 @@ def resolve_output_dir(source: Path, settings: AppSettings) -> Path:
     if directory:
         return Path(directory)
     return source.parent
-
-
-def _write_kikoeta(
-    cues: list[Cue],
-    source: Path,
-    settings: AppSettings,
-    stem: str,
-    formats: list[str],
-    src_cues: list[Cue] | None = None,
-    *,
-    source_first: bool = False,
-) -> list[str]:
-    work_id = extract_work_id(str(source), stem, settings.output.kikoeta_root)
-    root = settings.output.kikoeta_root.strip() or str(ROOT_DIR)
-    if not work_id:
-        return []
-    folder = Path(root) / "lyrics" / work_id
-    folder.mkdir(parents=True, exist_ok=True)
-    written: list[str] = []
-    for fmt in formats:
-        dest = folder / f"{stem}.{fmt}"
-        if src_cues:
-            _write_bilingual(dest, src_cues, cues, fmt, source_first=source_first)
-        else:
-            _write_file(dest, cues, fmt)
-        written.append(str(dest))
-    return written
 
 
 def _write_file(path: Path, cues: list[Cue], fmt: str) -> None:

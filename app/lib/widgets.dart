@@ -502,7 +502,7 @@ class KtSelectField<T> extends StatelessWidget {
             focusColor: Colors.transparent,
             elevation: 12,
             borderRadius: BorderRadius.circular(13),
-            itemHeight: 44,
+            itemHeight: 48,
             menuMaxHeight: 360,
             style: TextStyle(
               fontFamily: 'SarasaUI',

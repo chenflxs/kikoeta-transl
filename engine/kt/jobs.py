@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,10 +10,12 @@ from typing import Any
 
 from .events import EventBus
 from .kikoeta_cache import cache_completed_job
+from .llama_runtime import LLAMA_RUNTIME
 from .cleanup import cleanup_intermediates
 from .models import AppSettings, FileResult, JobRequest, StageFlags
 from .paths import WORK_DIR
 from .pipeline import process_file
+from .recent import record_finished_job
 from .settings import load_settings, merge_settings
 
 
@@ -98,33 +101,44 @@ class JobManager:
         job.bus.emit("status", stage="running", message="任务开始")
         job_dir = WORK_DIR / job.job_id
         job_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            for path in job.files:
-                if job.stop_event.is_set():
-                    break
-                file_dir = job_dir / Path(path).stem
-                file_dir.mkdir(parents=True, exist_ok=True)
-                process_settings = job.settings
-                if job.cleanup_paths:
-                    # Remote sources live in a disposable upload directory. Keep
-                    # downloadable outputs in the job directory so input cleanup
-                    # cannot remove them as soon as the job completes.
-                    process_settings = replace(
-                        job.settings,
-                        output=replace(
-                            job.settings.output,
-                            directory=str(file_dir / "outputs"),
-                        ),
-                    )
-                result = process_file(
-                    path=path,
-                    settings=process_settings,
-                    flags=job.flags,
-                    job_dir=file_dir,
-                    emit=job.bus.emit,
-                    stop_event=job.stop_event,
+        uses_local_llama = (
+            (job.flags.enable_translate and job.settings.translate.provider == "local_llama")
+            or (
+                job.flags.enable_correct
+                and (
+                    job.settings.correct.provider == "local_llama"
+                    or job.settings.translate.provider == "local_llama"
                 )
-                job.results.append(result)
+            )
+        )
+        try:
+            with LLAMA_RUNTIME.job_scope() if uses_local_llama else nullcontext():
+                for path in job.files:
+                    if job.stop_event.is_set():
+                        break
+                    file_dir = job_dir / Path(path).stem
+                    file_dir.mkdir(parents=True, exist_ok=True)
+                    process_settings = job.settings
+                    if job.cleanup_paths:
+                        # Remote sources live in a disposable upload directory. Keep
+                        # downloadable outputs in the job directory so input cleanup
+                        # cannot remove them as soon as the job completes.
+                        process_settings = replace(
+                            job.settings,
+                            output=replace(
+                                job.settings.output,
+                                directory=str(file_dir / "outputs"),
+                            ),
+                        )
+                    result = process_file(
+                        path=path,
+                        settings=process_settings,
+                        flags=job.flags,
+                        job_dir=file_dir,
+                        emit=job.bus.emit,
+                        stop_event=job.stop_event,
+                    )
+                    job.results.append(result)
             if job.stop_event.is_set():
                 job.status = "cancelled"
             elif any(item.status == "failed" for item in job.results):
@@ -142,6 +156,10 @@ class JobManager:
                     job.bus.emit("log", message=f"已缓存 {cached} 个 kikoeta 歌词结果")
             except Exception as exc:
                 job.bus.emit("log", message=f"保存 kikoeta 缓存失败：{exc}")
+            try:
+                record_finished_job(job)
+            except Exception as exc:
+                job.bus.emit("log", message=f"保存最近任务记录失败：{exc}")
             cleanup_intermediates(*job.cleanup_paths)
             job.bus.emit("job_done", status=job.status)
             job.bus.close()

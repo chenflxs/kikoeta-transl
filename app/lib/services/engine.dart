@@ -318,6 +318,33 @@ class EngineClient {
     ];
   }
 
+  Future<List<Map<String, dynamic>>> recentJobs() async {
+    final res = await http
+        .get(_uri('/api/recent'))
+        .timeout(const Duration(seconds: 8));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '加载最近任务失败');
+    }
+    final items = payload['entries'];
+    if (items is! List) return const [];
+    return [
+      for (final item in items)
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+  }
+
+  Future<int> deleteRecentCache(String jobId) async {
+    final res = await http
+        .delete(_uri('/api/recent/${Uri.encodeComponent(jobId)}/cache'))
+        .timeout(const Duration(seconds: 30));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '清理缓存失败');
+    }
+    return (payload['freed_bytes'] as num?)?.toInt() ?? 0;
+  }
+
   Future<Map<String, dynamic>> events(String id, int after) async {
     final client = http.Client();
     _eventsClient = client;

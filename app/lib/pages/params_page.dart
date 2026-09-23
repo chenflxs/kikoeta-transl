@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -16,6 +18,9 @@ class _ParamsPageState extends State<ParamsPage> {
   late bool enableVad, splitOnPunct, forceAligner, splitOnWord;
   late bool noFallback, noPunctuation, noGpu, flashAttn;
   bool _syncing = false;
+  bool _settingsSynced = false;
+  late String _savedDraft;
+  late final VoidCallback _unregisterPageSaver;
 
   TextEditingController field(String name) => _fields[name]!;
   TextEditingController get template => field('template');
@@ -24,40 +29,7 @@ class _ParamsPageState extends State<ParamsPage> {
   void initState() {
     super.initState();
     final asr = (widget.app.settings['asr'] as Map?) ?? {};
-    final values = <String, String>{
-      'threads': _text(asr['threads'], '4'),
-      'processors': _text(asr['processors'], '1'),
-      'offset_t': _text(asr['offset_t'], '0'),
-      'offset_n': _text(asr['offset_n'], '0'),
-      'duration': _text(asr['duration'], '0'),
-      'max_context': _text(asr['max_context'], '-1'),
-      'max_len': _text(asr['max_len'], '0'),
-      'hotwords': _text(asr['hotwords'], ''),
-      'best_of': _text(asr['best_of'], '5'),
-      'beam_size': _text(asr['beam_size'], 'greedy'),
-      'audio_ctx': _text(asr['audio_ctx'], '0'),
-      'word_thold': _text(asr['word_thold'], '0.01'),
-      'entropy_thold': _text(asr['entropy_thold'], '2.4'),
-      'logprob_thold': _text(asr['logprob_thold'], '-1.0'),
-      'no_speech_thold': _text(asr['no_speech_thold'], '0.6'),
-      'sensitivity': _text(asr['sensitivity'], 'balanced'),
-      'seed': _text(asr['seed'], '0'),
-      'temperature_inc': _text(asr['temperature_inc'], '0.2'),
-      'vad_max_speech': _text(asr['vad_max_speech_duration_s'], '6'),
-      'vad_min_silence': _text(asr['vad_min_silence_duration_ms'], '300'),
-      'vad_model': _text(asr['vad_model'], 'firered'),
-      'vad_threshold': _text(asr['vad_threshold'], '0.5'),
-      'max_new_tokens': _text(asr['max_new_tokens'], '224'),
-      'frequency_penalty': _text(asr['frequency_penalty'], '0.0'),
-      'temperature': _text(asr['temperature'], '0.0'),
-      'punc_model': _text(asr['punc_model'], ''),
-      'truecase_model': _text(asr['truecase_model'], ''),
-      'flush_after': _text(asr['flush_after'], '1'),
-      'chunk_seconds': _text(asr['chunk_seconds'], '30'),
-      'chunk_overlap': _text(asr['chunk_overlap'], '3.0'),
-      'device': _text(asr['device'], '0'),
-      'gpu_backend': _text(asr['gpu_backend'], 'auto'),
-    };
+    final values = _values(asr);
     for (final entry in values.entries) {
       _fields[entry.key] = TextEditingController(text: entry.value)
         ..addListener(_onStructuredChanged);
@@ -66,6 +38,53 @@ class _ParamsPageState extends State<ParamsPage> {
       text: '${asr['extra_args'] ?? ''}'.trim(),
     );
     template.addListener(_onTemplateChanged);
+    _loadFlags(asr);
+    if (template.text.isEmpty) _setGeneratedTemplate();
+    _savedDraft = _draft();
+    _settingsSynced = widget.app.settings.isNotEmpty;
+    _unregisterPageSaver = widget.app.registerPageSaver(
+      2,
+      () => _save(auto: true),
+    );
+    widget.app.addListener(_syncSettings);
+  }
+
+  Map<String, String> _values(Map asr) => <String, String>{
+    'threads': _text(asr['threads'], '4'),
+    'processors': _text(asr['processors'], '1'),
+    'offset_t': _text(asr['offset_t'], '0'),
+    'offset_n': _text(asr['offset_n'], '0'),
+    'duration': _text(asr['duration'], '0'),
+    'max_context': _text(asr['max_context'], '-1'),
+    'max_len': _text(asr['max_len'], '0'),
+    'hotwords': _text(asr['hotwords'], ''),
+    'best_of': _text(asr['best_of'], '5'),
+    'beam_size': _text(asr['beam_size'], 'greedy'),
+    'audio_ctx': _text(asr['audio_ctx'], '0'),
+    'word_thold': _text(asr['word_thold'], '0.01'),
+    'entropy_thold': _text(asr['entropy_thold'], '2.4'),
+    'logprob_thold': _text(asr['logprob_thold'], '-1.0'),
+    'no_speech_thold': _text(asr['no_speech_thold'], '0.6'),
+    'sensitivity': _text(asr['sensitivity'], 'balanced'),
+    'seed': _text(asr['seed'], '0'),
+    'temperature_inc': _text(asr['temperature_inc'], '0.2'),
+    'vad_max_speech': _text(asr['vad_max_speech_duration_s'], '6'),
+    'vad_min_silence': _text(asr['vad_min_silence_duration_ms'], '300'),
+    'vad_model': _text(asr['vad_model'], 'firered'),
+    'vad_threshold': _text(asr['vad_threshold'], '0.5'),
+    'max_new_tokens': _text(asr['max_new_tokens'], '512'),
+    'frequency_penalty': _text(asr['frequency_penalty'], '0.0'),
+    'temperature': _text(asr['temperature'], '0.0'),
+    'punc_model': _text(asr['punc_model'], ''),
+    'truecase_model': _text(asr['truecase_model'], ''),
+    'flush_after': _text(asr['flush_after'], '1'),
+    'chunk_seconds': _text(asr['chunk_seconds'], '30'),
+    'chunk_overlap': _text(asr['chunk_overlap'], '3.0'),
+    'device': _text(asr['device'], '0'),
+    'gpu_backend': _text(asr['gpu_backend'], 'auto'),
+  };
+
+  void _loadFlags(Map asr) {
     enableVad = asr['enable_vad'] != false;
     splitOnPunct = asr['split_on_punct'] != false;
     forceAligner = asr['force_aligner'] != false;
@@ -74,11 +93,41 @@ class _ParamsPageState extends State<ParamsPage> {
     noPunctuation = asr['no_punctuation'] == true;
     noGpu = asr['no_gpu'] == true;
     flashAttn = asr['flash_attn'] != false;
+  }
+
+  String _draft() => jsonEncode([
+    for (final entry in _fields.entries) [entry.key, entry.value.text],
+    enableVad,
+    splitOnPunct,
+    forceAligner,
+    splitOnWord,
+    noFallback,
+    noPunctuation,
+    noGpu,
+    flashAttn,
+  ]);
+
+  void _syncSettings() {
+    if (!mounted || _settingsSynced || widget.app.settings.isEmpty) return;
+    _settingsSynced = true;
+    if (_draft() != _savedDraft) return;
+    final asr = (widget.app.settings['asr'] as Map?) ?? {};
+    _syncing = true;
+    for (final entry in _values(asr).entries) {
+      _fields[entry.key]!.text = entry.value;
+    }
+    template.text = '${asr['extra_args'] ?? ''}'.trim();
+    _loadFlags(asr);
+    _syncing = false;
     if (template.text.isEmpty) _setGeneratedTemplate();
+    _savedDraft = _draft();
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _unregisterPageSaver();
+    widget.app.removeListener(_syncSettings);
     for (final controller in _fields.values) controller.dispose();
     super.dispose();
   }
@@ -125,16 +174,24 @@ class _ParamsPageState extends State<ParamsPage> {
       r'$input_file',
       if (enableVad) ...[
         '--vad',
-        '--vad-model', field('vad_model').text.trim(),
-        '--vad-threshold', field('vad_threshold').text.trim(),
-        '--vad-max-speech-duration-s', field('vad_max_speech').text.trim(),
-        '--vad-min-silence-duration-ms', field('vad_min_silence').text.trim(),
+        '--vad-model',
+        field('vad_model').text.trim(),
+        '--vad-threshold',
+        field('vad_threshold').text.trim(),
+        '--vad-max-speech-duration-s',
+        field('vad_max_speech').text.trim(),
+        '--vad-min-silence-duration-ms',
+        field('vad_min_silence').text.trim(),
       ],
-      '--max-new-tokens', field('max_new_tokens').text.trim(),
-      '--frequency-penalty', field('frequency_penalty').text.trim(),
-      '--temperature', field('temperature').text.trim(),
+      '--max-new-tokens',
+      field('max_new_tokens').text.trim(),
+      '--frequency-penalty',
+      field('frequency_penalty').text.trim(),
+      '--temperature',
+      field('temperature').text.trim(),
       if (_int('flush_after', 1) > 0) ...[
-        '--flush-after', field('flush_after').text.trim(),
+        '--flush-after',
+        field('flush_after').text.trim(),
       ],
       if (splitOnPunct) '--split-on-punct',
     ];
@@ -206,7 +263,7 @@ class _ParamsPageState extends State<ParamsPage> {
       'vad_max_speech': _option(tokens, ['--vad-max-speech-duration-s']) ?? '6',
       'vad_min_silence':
           _option(tokens, ['--vad-min-silence-duration-ms']) ?? '300',
-      'max_new_tokens': _option(tokens, ['--max-new-tokens', '-n']) ?? '224',
+      'max_new_tokens': _option(tokens, ['--max-new-tokens', '-n']) ?? '512',
       'frequency_penalty': _option(tokens, ['--frequency-penalty']) ?? '0.0',
       'temperature': _option(tokens, ['--temperature', '-tp']) ?? '0.0',
       'punc_model': _option(tokens, ['--punc-model']) ?? '',
@@ -262,7 +319,7 @@ class _ParamsPageState extends State<ParamsPage> {
       'vad_min_silence': '300',
       'vad_model': 'firered',
       'vad_threshold': '0.5',
-      'max_new_tokens': '224',
+      'max_new_tokens': '512',
       'frequency_penalty': '0.0',
       'temperature': '0.0',
       'punc_model': '',
@@ -279,17 +336,17 @@ class _ParamsPageState extends State<ParamsPage> {
     setState(() {});
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool auto = false}) async {
+    if (auto && _draft() == _savedDraft) return;
     _parseTemplateIntoFields();
-    final next = Map<String, dynamic>.from(widget.app.settings);
-    next['asr'] = {
-      ...(next['asr'] as Map? ?? {}),
+    final draft = _draft();
+    final asrValues = <String, dynamic>{
       'enable_vad': enableVad,
       'vad_max_speech_duration_s': _double('vad_max_speech', 6),
       'vad_min_silence_duration_ms': _int('vad_min_silence', 300),
       'vad_model': field('vad_model').text.trim(),
       'vad_threshold': _double('vad_threshold', 0.5),
-      'max_new_tokens': _int('max_new_tokens', 224),
+      'max_new_tokens': _int('max_new_tokens', 512),
       'frequency_penalty': _double('frequency_penalty', 0),
       'temperature': _double('temperature', 0),
       'split_on_punct': splitOnPunct,
@@ -332,8 +389,11 @@ class _ParamsPageState extends State<ParamsPage> {
       'gpu_backend': field('gpu_backend').text.trim(),
       'flash_attn': flashAttn,
     };
-    await widget.app.persistSettings(next);
-    if (mounted)
+    await widget.app.updateSettings((next) {
+      next['asr'] = {...(next['asr'] as Map? ?? {}), ...asrValues};
+    });
+    _savedDraft = draft;
+    if (!auto && mounted)
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('听写参数已保存')));
@@ -480,7 +540,7 @@ class _ParamsPageState extends State<ParamsPage> {
         const SectionTitle('解码'),
         KtGroup(
           children: [
-            _field('max_new_tokens', 'max-new-tokens', hint: '224'),
+            _field('max_new_tokens', 'max-new-tokens', hint: '512'),
             _field('frequency_penalty', 'frequency-penalty', hint: '0.0'),
             _field('temperature', 'temperature', hint: '0.0'),
             _field('temperature_inc', 'temperature-inc', hint: '0.2'),
@@ -548,7 +608,10 @@ class _ParamsPageState extends State<ParamsPage> {
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton(onPressed: _save, child: const Text('保存')),
+          child: FilledButton(
+            onPressed: () => _save(),
+            child: const Text('保存'),
+          ),
         ),
       ],
     );

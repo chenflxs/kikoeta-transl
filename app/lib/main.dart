@@ -11,6 +11,7 @@ import 'pages/models_page.dart';
 import 'pages/model_params_page.dart';
 import 'pages/output_page.dart';
 import 'pages/params_page.dart';
+import 'pages/recent_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/task_page.dart';
 import 'theme.dart';
@@ -230,6 +231,18 @@ class _KtAppState extends State<KtApp> with WindowListener, tray.TrayListener {
 class Shell extends StatelessWidget {
   const Shell({super.key});
 
+  void _selectTab(BuildContext context, int index) {
+    unawaited(
+      appState.selectTab(index).catchError((Object error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('自动保存失败，已留在当前页面：$error')));
+        }
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = paletteOf(context);
@@ -242,8 +255,43 @@ class Shell extends StatelessWidget {
               SizedBox(
                 width: 88,
                 child: NavigationRail(
-                  selectedIndex: appState.tab,
-                  onDestinationSelected: appState.selectTab,
+                  selectedIndex: appState.tab < 7 ? appState.tab : null,
+                  onDestinationSelected: (index) => _selectTab(context, index),
+                  scrollable: true,
+                  trailingAtBottom: true,
+                  trailing: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _selectTab(context, 7),
+                      child: SizedBox(
+                        width: 76,
+                        height: 62,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              appState.tab == 7
+                                  ? Icons.history
+                                  : Icons.history_outlined,
+                              color: appState.tab == 7 ? p.accent : p.dim,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '最近',
+                              style: TextStyle(
+                                color: appState.tab == 7 ? p.accent : p.dim,
+                                fontSize: 12,
+                                fontWeight: appState.tab == 7
+                                    ? FontWeight.w700
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   backgroundColor: p.surface,
                   indicatorColor: p.accent.withValues(alpha: .14),
                   selectedIconTheme: IconThemeData(color: p.accent),
@@ -313,6 +361,7 @@ class Shell extends StatelessWidget {
                         DictPage(app: appState),
                         OutputPage(app: appState),
                         SettingsPage(app: appState),
+                        RecentPage(app: appState),
                       ],
                     ),
                   ),

@@ -19,8 +19,8 @@ def is_subtitle(path: str | Path) -> bool:
     return Path(path).suffix.lower() in SUBTITLE_EXTS
 
 
-def parse_subtitle(path: str | Path) -> list[Cue]:
-    text = Path(path).read_text(encoding="utf-8-sig")
+def parse_subtitle(path: str | Path, *, errors: str = "strict") -> list[Cue]:
+    text = Path(path).read_text(encoding="utf-8-sig", errors=errors)
     return parse_subtitle_text(text, Path(path).suffix.lower())
 
 

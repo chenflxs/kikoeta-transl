@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -20,6 +22,10 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController remotePassword;
   String? _themeSelection;
   late bool remoteAccess;
+  bool _settingsSynced = false;
+  late String _savedDraft;
+  late final VoidCallback _unregisterPageSaver;
+  Future<void>? _saving;
 
   @override
   void initState() {
@@ -35,10 +41,42 @@ class _SettingsPageState extends State<SettingsPage> {
       text: '${s['remote_password'] ?? 'kikoeta'}',
     );
     remoteAccess = s['remote_access'] == true;
+    _savedDraft = _draft();
+    _settingsSynced = s.isNotEmpty;
+    _unregisterPageSaver = widget.app.registerPageSaver(
+      6,
+      () => _save(auto: true),
+    );
+    widget.app.addListener(_syncSettings);
+  }
+
+  String _draft() => jsonEncode([
+    ffmpeg.text,
+    crispasr.text,
+    proxy.text,
+    remoteUsername.text,
+    remotePassword.text,
+    remoteAccess,
+  ]);
+
+  void _syncSettings() {
+    if (!mounted || _settingsSynced || widget.app.settings.isEmpty) return;
+    _settingsSynced = true;
+    if (_draft() != _savedDraft) return;
+    final settings = widget.app.settings;
+    ffmpeg.text = '${settings['ffmpeg_path'] ?? ''}';
+    crispasr.text = '${settings['crispasr_dir'] ?? ''}';
+    proxy.text = '${settings['proxy'] ?? ''}';
+    remoteUsername.text = '${settings['remote_username'] ?? 'admin'}';
+    remotePassword.text = '${settings['remote_password'] ?? 'kikoeta'}';
+    setState(() => remoteAccess = settings['remote_access'] == true);
+    _savedDraft = _draft();
   }
 
   @override
   void dispose() {
+    _unregisterPageSaver();
+    widget.app.removeListener(_syncSettings);
     ffmpeg.dispose();
     crispasr.dispose();
     proxy.dispose();
@@ -48,15 +86,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _persistPaths() async {
-    final next = Map<String, dynamic>.from(widget.app.settings);
-    next['ffmpeg_path'] = ffmpeg.text.trim();
-    next['crispasr_dir'] = crispasr.text.trim();
-    next['proxy'] = proxy.text.trim();
-    next['theme'] = themeMode;
-    next['remote_access'] = remoteAccess;
-    next['remote_username'] = remoteUsername.text.trim();
-    next['remote_password'] = remotePassword.text;
-    await widget.app.persistSettings(next);
+    final ffmpegPath = ffmpeg.text.trim();
+    final crispasrPath = crispasr.text.trim();
+    final proxyUrl = proxy.text.trim();
+    final selectedTheme = themeMode;
+    final allowRemote = remoteAccess;
+    final username = remoteUsername.text.trim();
+    final password = remotePassword.text;
+    await widget.app.updateSettings((next) {
+      next['ffmpeg_path'] = ffmpegPath;
+      next['crispasr_dir'] = crispasrPath;
+      next['proxy'] = proxyUrl;
+      next['theme'] = selectedTheme;
+      next['remote_access'] = allowRemote;
+      next['remote_username'] = username;
+      next['remote_password'] = password;
+    });
   }
 
   String get themeMode {
@@ -68,20 +113,41 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _changeTheme(String value) async {
     setState(() => _themeSelection = value);
     widget.app.previewTheme(value);
-    final next = Map<String, dynamic>.from(widget.app.settings);
-    next['theme'] = value;
-    await widget.app.persistSettings(next);
+    await widget.app.updateSettings((next) => next['theme'] = value);
   }
 
-  Future<void> _save() async {
-    if (!_validRemoteCredentials()) return;
+  Future<void> _save({bool auto = false}) async {
+    final running = _saving;
+    if (running != null) {
+      await running;
+      if (auto) return _save(auto: true);
+      return;
+    }
+    final pending = _saveNow(auto: auto);
+    _saving = pending;
+    try {
+      await pending;
+    } finally {
+      if (identical(_saving, pending)) _saving = null;
+    }
+  }
+
+  Future<void> _saveNow({required bool auto}) async {
+    final draft = _draft();
+    if (auto && draft == _savedDraft) return;
+    if (!_validRemoteCredentials(showMessage: !auto)) {
+      if (auto) throw StateError('远程用户名或密码无效');
+      return;
+    }
     final previousRemoteAccess = widget.app.settings['remote_access'] == true;
     await _persistPaths();
     await widget.app.reload();
     if (previousRemoteAccess != remoteAccess) {
       await widget.app.restartEngine();
+      if (!widget.app.engineOnline) throw StateError('远程服务重启失败');
     }
-    if (mounted) {
+    _savedDraft = draft;
+    if (!auto && mounted) {
       setState(() {});
       ScaffoldMessenger.of(
         context,
@@ -89,18 +155,22 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  bool _validRemoteCredentials() {
+  bool _validRemoteCredentials({bool showMessage = true}) {
     final username = remoteUsername.text.trim();
     if (username.isEmpty || remotePassword.text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('远程用户名和密码不能为空')));
+      if (showMessage) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('远程用户名和密码不能为空')));
+      }
       return false;
     }
     if (username.contains(':')) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('远程用户名不能包含冒号')));
+      if (showMessage) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('远程用户名不能包含冒号')));
+      }
       return false;
     }
     return true;
@@ -109,10 +179,10 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _resetRemoteCredentials() async {
     remoteUsername.text = 'admin';
     remotePassword.text = 'kikoeta';
-    final next = Map<String, dynamic>.from(widget.app.settings);
-    next['remote_username'] = 'admin';
-    next['remote_password'] = 'kikoeta';
-    await widget.app.persistSettings(next);
+    await widget.app.updateSettings((next) {
+      next['remote_username'] = 'admin';
+      next['remote_password'] = 'kikoeta';
+    });
     if (!mounted) return;
     setState(() {});
     ScaffoldMessenger.of(
@@ -122,7 +192,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _refreshTools() async {
     if (!_validRemoteCredentials()) return;
-    await _persistPaths();
+    await _save(auto: true);
     await widget.app.refreshTools();
     if (mounted) {
       setState(() {});
@@ -242,7 +312,10 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton(onPressed: _save, child: const Text('保存')),
+          child: FilledButton(
+            onPressed: () => _save(),
+            child: const Text('保存'),
+          ),
         ),
       ],
     );

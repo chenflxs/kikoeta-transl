@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
@@ -110,7 +111,8 @@ class AsrSettings:
     enable_vad: bool = True
     vad_max_speech_duration_s: float = 6.0
     vad_min_silence_duration_ms: int = 300
-    max_new_tokens: int = 224
+    max_new_tokens: int = 512
+    max_new_tokens_default_version: int = 2
     frequency_penalty: float = 0.0
     repetition_penalty: float = 1.0
     condition_on_previous_text: bool = True
@@ -213,8 +215,6 @@ class OutputSettings:
     preset: str = "target_lrc"
     formats: list[str] = field(default_factory=lambda: ["lrc"])
     bilingual: bool = False
-    write_kikoeta_lyrics: bool = False
-    kikoeta_root: str = ""
     keep_gt_cache: bool = True
     # Optional suffix inserted before the output extension, e.g. ".fix" or
     # ".zh". An empty suffix preserves the historical file name.
@@ -339,13 +339,24 @@ class FileResult:
 
 
 def _asr_from_dict(asr: dict[str, Any], source_lang: str) -> AsrSettings:
+    legacy_token_default = _as_int(asr.get("max_new_tokens_default_version"), 1) < 2
+    max_new_tokens = _as_int(asr.get("max_new_tokens"), 512)
+    if legacy_token_default and max_new_tokens == 224:
+        max_new_tokens = 512
+    extra_args = str(asr.get("extra_args") or "")
+    if legacy_token_default:
+        extra_args = re.sub(
+            r"(?<!\S)((?:--max-new-tokens|-n)(?:\s+|=))224(?=\s|$)",
+            r"\g<1>512",
+            extra_args,
+        )
     return AsrSettings(
         model=str(asr.get("model") or ""),
         aligner=str(asr.get("aligner") or ""),
         backend=str(asr.get("backend") or "qwen3-1.7b"),
         language=str(asr.get("language") or source_lang or "ja"),
         prompt=str(asr.get("prompt") or ""),
-        extra_args=str(asr.get("extra_args") or ""),
+        extra_args=extra_args,
         threads=_as_int(asr.get("threads"), 4),
         processors=_as_int(asr.get("processors"), 1),
         offset_t=_as_int(asr.get("offset_t"), 0),
@@ -379,7 +390,8 @@ def _asr_from_dict(asr: dict[str, Any], source_lang: str) -> AsrSettings:
         enable_vad=_as_bool(asr.get("enable_vad"), True),
         vad_max_speech_duration_s=_as_float(asr.get("vad_max_speech_duration_s"), 6.0),
         vad_min_silence_duration_ms=_as_int(asr.get("vad_min_silence_duration_ms"), 300),
-        max_new_tokens=_as_int(asr.get("max_new_tokens"), 224),
+        max_new_tokens=max_new_tokens,
+        max_new_tokens_default_version=2,
         frequency_penalty=_as_float(asr.get("frequency_penalty"), 0.0),
         repetition_penalty=_as_float(asr.get("repetition_penalty"), 1.0),
         condition_on_previous_text=_as_bool(asr.get("condition_on_previous_text"), True),
@@ -466,8 +478,6 @@ def _output_from_dict(output: dict[str, Any], formats: list[Any]) -> OutputSetti
         preset=preset,
         formats=[preset_format(preset)],
         bilingual=preset_bilingual(preset),
-        write_kikoeta_lyrics=bool(output.get("write_kikoeta_lyrics", False)),
-        kikoeta_root=str(output.get("kikoeta_root") or ""),
         keep_gt_cache=bool(output.get("keep_gt_cache", True)),
         suffix=str(output.get("suffix") or ""),
     )

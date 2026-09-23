@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -36,6 +37,8 @@ class _ModelsPageState extends State<ModelsPage> {
   bool settingsSynced = false;
   String correctProvider = 'online';
   String translateProvider = 'online';
+  late String _savedDraft;
+  late final VoidCallback _unregisterPageSaver;
 
   @override
   void initState() {
@@ -64,12 +67,17 @@ class _ModelsPageState extends State<ModelsPage> {
       text: '${translate['translator'] ?? 'ForGal-json'}',
     );
     targetLang = TextEditingController(text: '${s['target_lang'] ?? 'zh-cn'}');
-    widget.app.addListener(_syncLocalModelsFromTools);
+    _savedDraft = _draft();
+    _unregisterPageSaver = widget.app.registerPageSaver(
+      1,
+      () => _save(auto: true),
+    );
     widget.app.addListener(_syncSettings);
+    widget.app.addListener(_syncLocalModelsFromTools);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncSettings());
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _syncLocalModelsFromTools(),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncSettings());
   }
 
   void _syncLocalModelsFromTools() {
@@ -95,6 +103,10 @@ class _ModelsPageState extends State<ModelsPage> {
 
   void _syncSettings() {
     if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
+    if (_draft() != _savedDraft) {
+      settingsSynced = true;
+      return;
+    }
     final s = widget.app.settings;
     final asr = (s['asr'] as Map?) ?? {};
     final correct = (s['correct'] as Map?) ?? {};
@@ -117,10 +129,30 @@ class _ModelsPageState extends State<ModelsPage> {
       translator.text = '${translate['translator'] ?? 'ForGal-json'}';
       targetLang.text = '${s['target_lang'] ?? 'zh-cn'}';
     });
+    _savedDraft = _draft();
   }
+
+  String _draft() => jsonEncode([
+    asrModel.text,
+    asrAligner.text,
+    asrBackend.text,
+    asrLang.text,
+    llamaModel.text,
+    correctProvider,
+    correctBase.text,
+    correctModel.text,
+    correctKey.text,
+    translateProvider,
+    transBase.text,
+    transModel.text,
+    transKey.text,
+    translator.text,
+    targetLang.text,
+  ]);
 
   @override
   void dispose() {
+    _unregisterPageSaver();
     widget.app.removeListener(_syncLocalModelsFromTools);
     widget.app.removeListener(_syncSettings);
     asrModel.dispose();
@@ -184,55 +216,61 @@ class _ModelsPageState extends State<ModelsPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _save() async {
-    final next = Map<String, dynamic>.from(widget.app.settings);
-    next['source_lang'] = asrLang.text.trim();
-    next['target_lang'] = targetLang.text.trim();
-    next['llama_model'] = llamaModel.text.trim();
-    next['asr'] = {
-      ...(next['asr'] as Map? ?? {}),
-      'model': asrModel.text.trim(),
-      'aligner': asrAligner.text.trim(),
-      'backend': asrBackend.text.trim(),
-      'language': asrLang.text.trim(),
-    };
-    final correct = Map<String, dynamic>.from(next['correct'] as Map? ?? {});
-    correct['provider'] = correctProvider;
-    if (correctProvider == 'online') {
-      if (correctBase.text.trim().isNotEmpty) {
-        correct['base_url'] = correctBase.text.trim();
+  Future<void> _save({bool auto = false}) async {
+    final draft = _draft();
+    if (auto && draft == _savedDraft) return;
+    final sourceLanguage = asrLang.text.trim();
+    final targetLanguage = targetLang.text.trim();
+    final llama = llamaModel.text.trim();
+    final model = asrModel.text.trim();
+    final aligner = asrAligner.text.trim();
+    final backend = asrBackend.text.trim();
+    final correctionProvider = correctProvider;
+    final correctionBase = correctBase.text.trim();
+    final correctionModel = correctModel.text.trim();
+    final correctionKey = correctKey.text.trim();
+    final translationProvider = translateProvider;
+    final translationBackend = translator.text.trim();
+    final translationBase = transBase.text.trim();
+    final translationModel = transModel.text.trim();
+    final translationKey = transKey.text.trim();
+    await widget.app.updateSettings((next) {
+      next['source_lang'] = sourceLanguage;
+      next['target_lang'] = targetLanguage;
+      next['llama_model'] = llama;
+      next['asr'] = {
+        ...(next['asr'] as Map? ?? {}),
+        'model': model,
+        'aligner': aligner,
+        'backend': backend,
+        'language': sourceLanguage,
+      };
+      final correct = Map<String, dynamic>.from(next['correct'] as Map? ?? {});
+      correct['provider'] = correctionProvider;
+      if (correctionProvider == 'online') {
+        if (correctionBase.isNotEmpty) correct['base_url'] = correctionBase;
+        if (correctionModel.isNotEmpty) correct['model'] = correctionModel;
+        if (correctionKey.isNotEmpty) correct['api_key'] = correctionKey;
       }
-      if (correctModel.text.trim().isNotEmpty) {
-        correct['model'] = correctModel.text.trim();
-      }
-      if (correctKey.text.trim().isNotEmpty) {
-        correct['api_key'] = correctKey.text.trim();
-      }
-    }
-    next['correct'] = correct;
-    final translate = Map<String, dynamic>.from(
-      next['translate'] as Map? ?? {},
-    );
-    translate['provider'] = translateProvider;
-    translate['translator'] = translator.text.trim();
-    if (translateProvider == 'online') {
-      final openai = Map<String, dynamic>.from(
-        translate['openai'] as Map? ?? {},
+      next['correct'] = correct;
+      final translate = Map<String, dynamic>.from(
+        next['translate'] as Map? ?? {},
       );
-      if (transBase.text.trim().isNotEmpty) {
-        openai['base_url'] = transBase.text.trim();
+      translate['provider'] = translationProvider;
+      translate['translator'] = translationBackend;
+      if (translationProvider == 'online') {
+        final openai = Map<String, dynamic>.from(
+          translate['openai'] as Map? ?? {},
+        );
+        if (translationBase.isNotEmpty) openai['base_url'] = translationBase;
+        if (translationModel.isNotEmpty) openai['model'] = translationModel;
+        if (translationKey.isNotEmpty) openai['api_key'] = translationKey;
+        translate['openai'] = openai;
       }
-      if (transModel.text.trim().isNotEmpty) {
-        openai['model'] = transModel.text.trim();
-      }
-      if (transKey.text.trim().isNotEmpty) {
-        openai['api_key'] = transKey.text.trim();
-      }
-      translate['openai'] = openai;
-    }
-    next['translate'] = translate;
-    await widget.app.persistSettings(next);
-    _toast('模型设置已保存');
+      next['translate'] = translate;
+    });
+    _savedDraft = draft;
+    if (!auto) _toast('模型设置已保存');
   }
 
   Future<void> _queryAsr() async {
@@ -670,7 +708,10 @@ class _ModelsPageState extends State<ModelsPage> {
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton(onPressed: _save, child: const Text('保存')),
+              child: FilledButton(
+                onPressed: () => _save(),
+                child: const Text('保存'),
+              ),
             ),
           ],
         );

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -23,20 +25,42 @@ class OutputPage extends StatefulWidget {
 
 class _OutputPageState extends State<OutputPage> {
   late final TextEditingController directory;
-  late bool writeKikoeta;
   late String preset;
+  late String _savedDraft;
+  late final VoidCallback _unregisterPageSaver;
+  bool _settingsSynced = false;
 
   @override
   void initState() {
     super.initState();
     final output = (widget.app.settings['output'] as Map?) ?? {};
     directory = TextEditingController(text: '${output['directory'] ?? ''}');
-    writeKikoeta = output['write_kikoeta_lyrics'] == true;
     preset = _presetOf(output);
+    _savedDraft = _draft();
+    _settingsSynced = widget.app.settings.isNotEmpty;
+    _unregisterPageSaver = widget.app.registerPageSaver(
+      5,
+      () => _save(auto: true),
+    );
+    widget.app.addListener(_syncSettings);
+  }
+
+  String _draft() => jsonEncode([directory.text, preset]);
+
+  void _syncSettings() {
+    if (!mounted || _settingsSynced || widget.app.settings.isEmpty) return;
+    _settingsSynced = true;
+    if (_draft() != _savedDraft) return;
+    final output = (widget.app.settings['output'] as Map?) ?? {};
+    directory.text = '${output['directory'] ?? ''}';
+    setState(() => preset = _presetOf(output));
+    _savedDraft = _draft();
   }
 
   @override
   void dispose() {
+    _unregisterPageSaver();
+    widget.app.removeListener(_syncSettings);
     directory.dispose();
     super.dispose();
   }
@@ -63,21 +87,26 @@ class _OutputPageState extends State<OutputPage> {
     return id;
   }
 
-  Future<void> _save() async {
-    final next = Map<String, dynamic>.from(widget.app.settings);
+  Future<void> _save({bool auto = false}) async {
+    final draft = _draft();
+    if (auto && draft == _savedDraft) return;
+    final outputDirectory = directory.text.trim();
+    final outputPreset = preset;
     final bilingual =
-        preset.startsWith('bilingual_') || preset.startsWith('source_target_');
-    final fmt = preset.endsWith('srt') ? 'srt' : 'lrc';
-    next['output'] = {
-      ...(next['output'] as Map? ?? {}),
-      'directory': directory.text.trim(),
-      'preset': preset,
-      'formats': [fmt],
-      'bilingual': bilingual,
-      'write_kikoeta_lyrics': writeKikoeta,
-    };
-    await widget.app.persistSettings(next);
-    if (mounted) {
+        outputPreset.startsWith('bilingual_') ||
+        outputPreset.startsWith('source_target_');
+    final fmt = outputPreset.endsWith('srt') ? 'srt' : 'lrc';
+    await widget.app.updateSettings((next) {
+      next['output'] = {
+        ...(next['output'] as Map? ?? {}),
+        'directory': outputDirectory,
+        'preset': outputPreset,
+        'formats': [fmt],
+        'bilingual': bilingual,
+      };
+    });
+    _savedDraft = draft;
+    if (!auto && mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('输出设置已保存')));
@@ -141,22 +170,13 @@ class _OutputPageState extends State<OutputPage> {
             ),
           ],
         ),
-        const SectionTitle('kikoeta'),
-        KtGroup(
-          children: [
-            KtSwitchRow(
-              icon: Icons.folder_special_outlined,
-              title: '写入 kikoeta 歌词库',
-              sub: 'lyrics/RJ######/',
-              value: writeKikoeta,
-              onChanged: (v) => setState(() => writeKikoeta = v),
-            ),
-          ],
-        ),
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton(onPressed: _save, child: const Text('保存')),
+          child: FilledButton(
+            onPressed: () => _save(),
+            child: const Text('保存'),
+          ),
         ),
       ],
     );

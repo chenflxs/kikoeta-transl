@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../app_state.dart';
 import '../widgets.dart';
@@ -15,6 +17,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  static const _repositoryUrl = 'https://github.com/chenflxs/kikoeta-transl';
+  static const _currentVersion = '0.1.1';
   late final TextEditingController ffmpeg;
   late final TextEditingController crispasr;
   late final TextEditingController proxy;
@@ -202,6 +206,72 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  bool _checkingUpdate = false;
+
+  Future<void> _openRepository() async {
+    await _openUrl(_repositoryUrl);
+  }
+
+  Future<void> _openUrl(String url) async {
+    if (Platform.isWindows) {
+      await Process.start('explorer.exe', [url]);
+    } else if (Platform.isMacOS) {
+      await Process.start('open', [url]);
+    } else {
+      await Process.start('xdg-open', [url]);
+    }
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    String message;
+    try {
+      final response = await http
+          .get(
+            Uri.parse(
+              'https://api.github.com/repos/chenflxs/kikoeta-transl/releases/latest',
+            ),
+            headers: const {'Accept': 'application/vnd.github+json'},
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) {
+        throw HttpException('GitHub 返回 ${response.statusCode}');
+      }
+      final release = jsonDecode(response.body) as Map<String, dynamic>;
+      final tag = (release['tag_name'] as String?)?.trim();
+      final url =
+          (release['html_url'] as String?)?.trim() ?? '$_repositoryUrl/releases';
+      if (tag == null || tag.isEmpty) throw const FormatException('未找到版本号');
+      final latest = tag.replaceFirst(RegExp(r'^[vV]'), '').split('+').first;
+      final currentParts = _currentVersion.split('.').map(int.parse).toList();
+      final latestParts = latest.split('.').map(int.tryParse).toList();
+      var comparison = 0;
+      for (var i = 0; i < 3; i++) {
+        final current = i < currentParts.length ? currentParts[i] : 0;
+        final newer = i < latestParts.length ? latestParts[i] : null;
+        if (newer == null) throw const FormatException('版本号格式无效');
+        if (newer != current) {
+          comparison = newer.compareTo(current);
+          break;
+        }
+      }
+      if (comparison > 0) {
+        message = '发现新版本 $tag（当前 $_currentVersion）';
+        await _openUrl(url);
+      } else {
+        message = '当前已是最新版本（$_currentVersion）';
+      }
+    } catch (error) {
+      message = '检查更新失败：$error';
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tools = widget.app.tools;
@@ -315,6 +385,34 @@ class _SettingsPageState extends State<SettingsPage> {
           child: FilledButton(
             onPressed: () => _save(),
             child: const Text('保存'),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Divider(),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              TextButton.icon(
+                onPressed: _openRepository,
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('项目仓库'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _checkingUpdate ? null : _checkForUpdate,
+                icon: _checkingUpdate
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.system_update_alt),
+                label: Text(_checkingUpdate ? '正在检查…' : '检查更新'),
+              ),
+            ],
           ),
         ),
       ],

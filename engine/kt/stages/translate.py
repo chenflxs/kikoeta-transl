@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -39,6 +40,49 @@ def translate_cues(
     stop_event: Event | None = None,
 ) -> list[Cue]:
     raise_if_cancelled(stop_event)
+    if settings.translate.provider == "local_llama":
+        from ..llama_runtime import local_llama_session
+
+        if emit:
+            emit("log", message="正在准备本地 Llama 模型")
+        with local_llama_session(settings, stop_event) as (endpoint, openai_base, model_id):
+            local_translate = replace(
+                settings.translate,
+                sakura_endpoint=endpoint,
+                sakura_model=model_id,
+                openai=replace(
+                    settings.translate.openai,
+                    base_url=openai_base,
+                    model=model_id,
+                    api_key="",
+                ),
+            )
+            local_settings = replace(settings, proxy="", translate=local_translate)
+            if emit:
+                emit("log", message=f"本地 Llama 已就绪：{settings.llama_model}")
+            return _translate_cues(
+                cues,
+                workspace,
+                local_settings,
+                emit=emit,
+                stop_event=stop_event,
+            )
+    return _translate_cues(
+        cues,
+        workspace,
+        settings,
+        emit=emit,
+        stop_event=stop_event,
+    )
+
+
+def _translate_cues(
+    cues: list[Cue],
+    workspace: Path,
+    settings: AppSettings,
+    emit: EmitFn | None = None,
+    stop_event: Event | None = None,
+) -> list[Cue]:
     ensure_galtransl_path()
     # GalTransl temporarily changes cwd to its own package directory. Resolve
     # here so its project/config paths remain valid for callers that pass a

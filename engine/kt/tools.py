@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -9,6 +10,12 @@ from pathlib import Path
 
 from .models import AppSettings
 from .paths import BIN_DIR, CREATE_NO_WINDOW, GALTRANSL_ROOT
+
+
+LOCAL_LLAMA_HOST = "127.0.0.1"
+LOCAL_LLAMA_PORT = 18766
+LOCAL_LLAMA_ENDPOINT = f"http://{LOCAL_LLAMA_HOST}:{LOCAL_LLAMA_PORT}"
+LOCAL_LLAMA_OPENAI_BASE = f"{LOCAL_LLAMA_ENDPOINT}/v1"
 
 
 FALLBACK_ASR_BACKENDS = [
@@ -74,6 +81,33 @@ def resolve_crispasr_dir(settings: AppSettings) -> Path:
     if settings.crispasr_dir:
         return Path(settings.crispasr_dir)
     return BIN_DIR / "crispasr"
+
+
+def resolve_llama_dir(settings: AppSettings) -> Path:
+    if settings.llama_dir:
+        return Path(settings.llama_dir)
+    return BIN_DIR / "llama"
+
+
+def list_llama_models(settings: AppSettings) -> dict[str, object]:
+    folder = resolve_llama_dir(settings)
+    executable = folder / ("llama-server.exe" if os.name == "nt" else "llama-server")
+    models: list[dict[str, str]] = []
+    if folder.is_dir():
+        for path in sorted(folder.glob("*.gguf"), key=lambda item: item.name.lower()):
+            match = re.search(r"-(\d{5})-of-(\d{5})\.gguf$", path.name, re.IGNORECASE)
+            if match and match.group(1) != "00001":
+                continue
+            models.append({"id": path.name, "label": path.name, "path": str(path)})
+    return {
+        "dir": str(folder),
+        "executable": str(executable) if executable.is_file() else "",
+        "models": models,
+        "host": LOCAL_LLAMA_HOST,
+        "port": LOCAL_LLAMA_PORT,
+        "endpoint": LOCAL_LLAMA_OPENAI_BASE,
+        "locked": True,
+    }
 
 
 def list_crispasr_models(settings: AppSettings) -> dict[str, object]:

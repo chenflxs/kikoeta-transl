@@ -23,7 +23,8 @@ from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
 from kt.settings import load_settings, save_settings
 from kt.stages.correct import test_correct
-from kt.tools import catalog, list_crispasr_models, list_openai_models, resolve_ffmpeg
+from kt.llama_runtime import LLAMA_RUNTIME
+from kt.tools import catalog, list_crispasr_models, list_llama_models, list_openai_models, resolve_ffmpeg
 from kt.paths import WORK_DIR
 
 
@@ -206,7 +207,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/test/translate":
             settings = load_settings()
-            if not settings.translate.openai.base_url and "sakura" not in settings.translate.translator:
+            if settings.translate.provider == "local_llama" and not settings.llama_model:
+                self._error(400, "未选择本地 Llama 模型")
+                return
+            if (
+                settings.translate.provider != "local_llama"
+                and not settings.translate.openai.base_url
+                and "sakura" not in settings.translate.translator
+            ):
                 self._error(400, "未配置翻译后端")
                 return
             self._json({"ok": True, "message": "配置已保存，将在任务中调用翻译模块"})
@@ -386,11 +394,17 @@ def _tools() -> dict:
         asr = list_crispasr_models(settings)
     except Exception as exc:
         asr = {"models": [], "aligners": [], "executable": "", "backends": [], "error": str(exc)}
+    try:
+        llama = list_llama_models(settings)
+        llama.update(LLAMA_RUNTIME.status())
+    except Exception as exc:
+        llama = {"models": [], "executable": "", "status": "error", "error": str(exc)}
     payload = {
         "ffmpeg": ffmpeg,
         "ffprobe": ffprobe,
         "ffmpeg_error": ffmpeg_error,
         "asr": asr,
+        "llama": llama,
     }
     try:
         payload.update(catalog())
@@ -463,6 +477,7 @@ def main() -> None:
         pass
     finally:
         _CLIENT_WATCHDOG_STOP.set()
+        LLAMA_RUNTIME.shutdown()
         server.server_close()
         if _PUBLIC_SERVER is not None:
             _PUBLIC_SERVER.shutdown()

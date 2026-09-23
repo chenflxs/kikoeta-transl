@@ -69,20 +69,22 @@ python -m kt run C:\media\song.mkv --correct
 
 ### 本地翻译模型
 
-本地翻译需要将 [llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server.exe` 与一个 Sakura GGUF 放入 `bin/llama/`，再在模型页填写本地服务的 OpenAI 兼容地址（通常为 `http://127.0.0.1:8080/v1`）。以下按可用显存给出建议；实际占用还会随量化、上下文长度和其他程序变化。
+本地矫正或翻译需要将 [llama.cpp](https://github.com/ggml-org/llama.cpp) 的 `llama-server.exe` 与 Sakura GGUF 放入 `bin/llama/`。在“模型”页查询并选择一个 GGUF，再把矫正或翻译的连接方式切换为“本地 Llama”；engine 会按需启动单模型服务并固定监听 `127.0.0.1:18766`。矫正和翻译同时选择本地时会共享该模型。以下按可用显存给出建议；实际占用还会随量化、上下文长度和其他程序变化。
 
-| 可用显存 | 推荐 Sakura 模型 | 建议量化 / 说明 |
+| 可用显存 | 推荐模型 | 建议量化 / 说明 |
 | --- | --- | --- |
-| 4–6 GB | [Sakura-1.5B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-1.5B-Qwen2.5-v1.0-GGUF) | Q4；适合尝试或低显存设备，翻译质量有限。 |
-| 8–10 GB | [Sakura-7B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-7B-Qwen2.5-v1.0-GGUF) | IQ4_XS / Q4；日常本地翻译的优先选择。 |
-| 12–16 GB | [Sakura-14B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-14B-Qwen2.5-v1.0-GGUF) | IQ4_XS / Q4；质量与显存的平衡选择。 |
+| 4–6 GB | **首选：[GalTransl-v4-4B-2601](https://huggingface.co/SakuraLLM/GalTransl-v4-4B-2601)**<br>备选：[Sakura-1.5B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-1.5B-Qwen2.5-v1.0-GGUF) | GalTransl 4B：4 GB 选择 Q5_K_S，6 GB 选择 Q6_K。<br>Sakura 1.5B：选择 Q4。 |
+| 8–10 GB | **首选：[Sakura-GalTransl-7B-v3.7](https://huggingface.co/SakuraLLM/Sakura-GalTransl-7B-v3.7)**<br>备选：[Sakura-7B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-7B-Qwen2.5-v1.0-GGUF) | GalTransl 7B：选择 IQ4_XS / Q4_K。<br>Sakura 7B：选择 IQ4_XS / Q4。 |
+| 12–16 GB | **首选：[Sakura-GalTransl-14B-v3.8](https://huggingface.co/SakuraLLM/Sakura-GalTransl-14B-v3.8)**<br>备选：[Sakura-14B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-14B-Qwen2.5-v1.0-GGUF) | GalTransl 14B：选择 IQ4_XS / Q5_K_S。<br>Sakura 14B：选择 IQ4_XS / Q4。 |
 | 24 GB 以上 | [Sakura-32B-Qwen2beta-v0.9-GGUF](https://huggingface.co/SakuraLLM/Sakura-32B-Qwen2beta-v0.9-GGUF) | Q4；建议保留额外显存给上下文。若更重视稳定速度，可改用 14B 的 Q6_K。 |
 
-示例启动命令（请把模型文件名替换为实际下载的文件）：
+SakuraLLM 声明其模型采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans) 且禁止商用，下载和使用前请同时阅读对应模型页的说明。
+
+等效启动命令如下；通常无需手动执行：
 
 ```powershell
 cd bin/llama
-.\llama-server.exe -m .\sakura-7b-qwen2.5-v1.0-iq4xs.gguf --host 127.0.0.1 --port 8080
+.\llama-server.exe -m .\sakura-7b-qwen2.5-v1.0-iq4xs.gguf --host 127.0.0.1 --port 18766
 ```
 
 ### 在线翻译模型

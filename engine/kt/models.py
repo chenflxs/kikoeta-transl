@@ -100,7 +100,7 @@ class AsrSettings:
     no_punctuation: bool = False
     punc_model: str = ""
     truecase_model: str = ""
-    flush_after: int = 0
+    flush_after: int = 1
     chunk_seconds: int = 30
     chunk_overlap: float = 3.0
     no_gpu: bool = False
@@ -130,6 +130,7 @@ class ModelEndpoint:
 
 @dataclass
 class CorrectionSettings:
+    provider: str = "online"
     base_url: str = ""
     model: str = ""
     api_key: str = ""
@@ -147,6 +148,7 @@ class CorrectionSettings:
 
 @dataclass
 class TranslateSettings:
+    provider: str = "online"
     translator: str = "ForGal-json"
     openai: ModelEndpoint = field(default_factory=ModelEndpoint)
     sakura_endpoint: str = "http://127.0.0.1:8080"
@@ -225,6 +227,7 @@ class AppSettings:
     ffprobe_path: str = ""
     crispasr_dir: str = ""
     llama_dir: str = ""
+    llama_model: str = ""
     proxy: str = ""
     theme: str = "system"
     remote_access: bool = False
@@ -261,6 +264,7 @@ class AppSettings:
             ffprobe_path=str(raw.get("ffprobe_path") or ""),
             crispasr_dir=str(raw.get("crispasr_dir") or ""),
             llama_dir=str(raw.get("llama_dir") or ""),
+            llama_model=str(raw.get("llama_model") or ""),
             proxy=str(raw["proxy"] if "proxy" in raw else "http://127.0.0.1:7890"),
             theme=str(raw.get("theme") or "system"),
             remote_access=_as_bool(raw.get("remote_access"), False),
@@ -274,6 +278,7 @@ class AppSettings:
             ),
             asr=_asr_from_dict(asr, str(raw.get("source_lang") or "ja")),
             correct=CorrectionSettings(
+                provider=_normalize_provider(correct.get("provider")),
                 base_url=str(correct.get("base_url") or ""),
                 model=str(correct.get("model") or ""),
                 api_key=str(correct.get("api_key") or ""),
@@ -287,6 +292,7 @@ class AppSettings:
                 ),
             ),
             translate=TranslateSettings(
+                provider=_normalize_provider(translate.get("provider")),
                 translator=str(translate.get("translator") or "ForGal-json"),
                 openai=ModelEndpoint(
                     base_url=str(openai.get("base_url") or ""),
@@ -363,7 +369,7 @@ def _asr_from_dict(asr: dict[str, Any], source_lang: str) -> AsrSettings:
         no_punctuation=_as_bool(asr.get("no_punctuation"), False),
         punc_model=str(asr.get("punc_model") or ""),
         truecase_model=str(asr.get("truecase_model") or ""),
-        flush_after=_as_int(asr.get("flush_after"), 0),
+        flush_after=_as_int(asr.get("flush_after"), 1),
         chunk_seconds=_as_int(asr.get("chunk_seconds"), 30),
         chunk_overlap=_as_float(asr.get("chunk_overlap"), 3.0),
         no_gpu=_as_bool(asr.get("no_gpu"), False),
@@ -390,6 +396,10 @@ def _normalize_prompt_mode(value: Any) -> str:
     if mode in {"overwrite", "overwriteprompt"}:
         return "overwrite"
     return "append"
+
+
+def _normalize_provider(value: Any) -> str:
+    return "local_llama" if str(value or "").strip().lower() == "local_llama" else "online"
 
 
 def _as_bool(value: Any, default: bool) -> bool:

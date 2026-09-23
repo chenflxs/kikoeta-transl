@@ -245,6 +245,7 @@ class KtComboField extends StatefulWidget {
   final String? hint;
   final List<String> options;
   final Map<String, String>? labels;
+  final ValueChanged<String>? onChanged;
 
   const KtComboField({
     super.key,
@@ -253,6 +254,7 @@ class KtComboField extends StatefulWidget {
     this.hint,
     this.options = const [],
     this.labels,
+    this.onChanged,
   });
 
   @override
@@ -342,6 +344,7 @@ class _KtComboFieldState extends State<KtComboField> {
               ),
               onPressed: () {
                 widget.controller.text = option;
+                widget.onChanged?.call(option);
                 _menu.close();
                 setState(() {});
               },
@@ -370,7 +373,8 @@ class _KtComboFieldState extends State<KtComboField> {
             fontSize: 13.5,
             fontWeight: FontWeight.w500,
           ),
-          onChanged: (_) {
+          onChanged: (value) {
+            widget.onChanged?.call(value);
             if (menuController.isOpen) setState(() {});
           },
           decoration: InputDecoration(

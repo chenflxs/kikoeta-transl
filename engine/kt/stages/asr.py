@@ -10,6 +10,7 @@ import tempfile
 import time
 from threading import Event, Thread
 from pathlib import Path
+from typing import Callable
 
 from ..events import EmitFn
 from ..cancellation import TaskCancelled, raise_if_cancelled, terminate_process
@@ -28,7 +29,13 @@ DEFAULT_ASR_TEMPLATE = (
     "--vad-model firered --vad-threshold 0.5 --vad-max-speech-duration-s 6 "
     "--vad-min-silence-duration-ms 300 --max-new-tokens 224 "
     "--frequency-penalty 0.0 "
-    "--temperature 0.0 --split-on-punct"
+    "--temperature 0.0 --flush-after 1 --split-on-punct"
+)
+
+
+_SRT_TIMING_RE = re.compile(
+    r"^\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*"
+    r"(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})"
 )
 
 
@@ -78,20 +85,25 @@ def transcribe_wav(
             output_file=output_base,
             settings=settings,
         )
+        command = _ensure_progressive_srt(command)
         _validate_options(executable, command)
         raise_if_cancelled(stop_event)
         _emit_log(emit, file, "CrispASR 已启动，正在加载模型并准备听写")
+        streamed_cues: list[Cue] = []
         result = _run_with_heartbeat(
             command,
             emit=emit,
             file=file,
             stop_event=stop_event,
+            on_cue=streamed_cues.append,
         )
         _emit_log(emit, file, "CrispASR 推理完成，正在读取听写结果")
-        if not generated.is_file() or generated.stat().st_size == 0:
-            detail = (result.stderr or result.stdout or "").strip()
-            raise RuntimeError(f"CrispASR 失败: {detail or result.returncode}")
-        cues = parse_subtitle(generated)
+        file_cues = (
+            parse_subtitle(generated)
+            if generated.is_file() and generated.stat().st_size > 0
+            else []
+        )
+        cues = file_cues if len(file_cues) >= len(streamed_cues) else streamed_cues
         if not cues:
             detail = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(f"CrispASR 未生成有效字幕: {detail or result.returncode}")
@@ -112,10 +124,16 @@ def _run_with_heartbeat(
     emit: EmitFn | None,
     file: str | None,
     stop_event: Event | None = None,
+    on_cue: Callable[[Cue], None] | None = None,
     idle_notice_after: float = 30.0,
     idle_notice_interval: float = 60.0,
 ) -> subprocess.CompletedProcess[str]:
     """Stream CrispASR output and warn when it becomes idle."""
+    process_env = os.environ.copy()
+    # CrispASR's slice pipeline takes precedence over --flush-after. Disable it
+    # for this subprocess so each completed (and, when enabled, aligned) VAD
+    # slice is actually flushed while transcription is still running.
+    process_env["CRISPASR_SLICE_PIPELINE"] = "0"
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -124,6 +142,7 @@ def _run_with_heartbeat(
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        env=process_env,
         **popen_kwargs(),
     )
     output_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()
@@ -155,6 +174,7 @@ def _run_with_heartbeat(
     next_notice = last_output + idle_notice_after
     notice_count = 0
     streams_closed = 0
+    srt_parser = _ProgressiveSrtParser()
     while True:
         if stop_event is not None and stop_event.is_set():
             terminate_process(process)
@@ -165,17 +185,34 @@ def _run_with_heartbeat(
         if process.poll() is None:
             wait_for = min(wait_for, max(0.01, next_notice - now))
         try:
-            stream_name, line = output_queue.get(timeout=wait_for)
+            output_item = output_queue.get(timeout=wait_for)
         except queue.Empty:
-            stream_name, line = "", ""
-        if line is None:
-            streams_closed += 1
-        elif line:
-            output_lines[stream_name].append(line)
-            last_output = time.monotonic()
-            next_notice = last_output + idle_notice_after
-            notice_count = 0
-            _emit_log(emit, file, line)
+            output_item = None
+        if output_item is not None:
+            stream_name, line = output_item
+            if line is None:
+                streams_closed += 1
+                if stream_name == "stdout":
+                    for cue in srt_parser.finish():
+                        if on_cue is not None:
+                            on_cue(cue)
+                        _emit_log(emit, file, _format_cue_log(cue))
+            else:
+                output_lines[stream_name].append(line)
+                if line:
+                    last_output = time.monotonic()
+                    next_notice = last_output + idle_notice_after
+                    notice_count = 0
+                if stream_name == "stdout":
+                    passthrough, cues = srt_parser.feed(line)
+                    for message in passthrough:
+                        _emit_log(emit, file, message)
+                    for cue in cues:
+                        if on_cue is not None:
+                            on_cue(cue)
+                        _emit_log(emit, file, _format_cue_log(cue))
+                elif line:
+                    _emit_log(emit, file, line)
 
         now = time.monotonic()
         if process.poll() is None and now >= next_notice:
@@ -199,12 +236,100 @@ def _run_with_heartbeat(
             break
 
     returncode = process.wait()
+    for reader in readers:
+        reader.join(timeout=1.0)
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
     return subprocess.CompletedProcess(
         args=command,
         returncode=returncode,
         stdout="\n".join(output_lines["stdout"]),
         stderr="\n".join(output_lines["stderr"]),
     )
+
+
+class _ProgressiveSrtParser:
+    """Turn line-buffered progressive SRT stdout into complete cues."""
+
+    def __init__(self) -> None:
+        self._index: str | None = None
+        self._timing: tuple[float, float] | None = None
+        self._text: list[str] = []
+
+    def feed(self, line: str) -> tuple[list[str], list[Cue]]:
+        passthrough: list[str] = []
+        cues: list[Cue] = []
+        stripped = line.strip()
+
+        if self._timing is not None:
+            if not stripped:
+                cue = self._take_cue()
+                if cue is not None:
+                    cues.append(cue)
+                return passthrough, cues
+            self._text.append(line)
+            return passthrough, cues
+
+        timing = _SRT_TIMING_RE.match(line)
+        if self._index is not None:
+            if timing is not None:
+                self._timing = (
+                    _parse_srt_clock(timing.group(1)),
+                    _parse_srt_clock(timing.group(2)),
+                )
+                self._index = None
+                return passthrough, cues
+            passthrough.append(self._index)
+            self._index = None
+
+        if stripped.isdigit():
+            self._index = line
+        elif timing is not None:
+            self._timing = (
+                _parse_srt_clock(timing.group(1)),
+                _parse_srt_clock(timing.group(2)),
+            )
+        elif stripped:
+            passthrough.append(line)
+        return passthrough, cues
+
+    def finish(self) -> list[Cue]:
+        cue = self._take_cue()
+        self._index = None
+        return [cue] if cue is not None else []
+
+    def _take_cue(self) -> Cue | None:
+        timing = self._timing
+        text = "\n".join(self._text).strip()
+        self._timing = None
+        self._text = []
+        if timing is None or not text:
+            return None
+        return Cue(
+            start=timing[0],
+            end=max(timing[1], timing[0]),
+            message=text,
+            src_message=text,
+        )
+
+
+def _parse_srt_clock(value: str) -> float:
+    hours, minutes, seconds = value.replace(",", ".").split(":")
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _format_cue_log(cue: Cue) -> str:
+    text = " ".join(part.strip() for part in cue.message.splitlines() if part.strip())
+    return f"[{_format_log_clock(cue.start)} --> {_format_log_clock(cue.end)}] {text}"
+
+
+def _format_log_clock(seconds: float) -> str:
+    millis = max(0, round(seconds * 1000))
+    hours, remainder = divmod(millis, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    whole_seconds, millis = divmod(remainder, 1000)
+    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{millis:03d}"
 
 
 def _emit_log(emit: EmitFn | None, file: str | None, message: str) -> None:
@@ -333,6 +458,38 @@ def _command_from_settings(
     if asr.split_on_punct:
         command.append("--split-on-punct")
     return command
+
+
+def _ensure_progressive_srt(command: list[str]) -> list[str]:
+    """Make file-mode SRT output observable while CrispASR is still running."""
+    if not any(token in {"--output-srt", "-osrt"} for token in command):
+        return command
+    if any(token in {"--stream", "--stream-json", "--mic", "--live"} for token in command):
+        return command
+
+    progressive = list(command)
+    for index, token in enumerate(progressive):
+        if token == "--flush-after":
+            if index + 1 >= len(progressive):
+                progressive.append("1")
+            else:
+                try:
+                    value = int(progressive[index + 1])
+                except ValueError:
+                    value = 0
+                if value <= 0:
+                    progressive[index + 1] = "1"
+            return progressive
+        if token.startswith("--flush-after="):
+            try:
+                value = int(token.split("=", 1)[1])
+            except ValueError:
+                value = 0
+            if value <= 0:
+                progressive[index] = "--flush-after=1"
+            return progressive
+    progressive.extend(["--flush-after", "1"])
+    return progressive
 
 
 def _resolve_under(folder: Path, name: str) -> Path:

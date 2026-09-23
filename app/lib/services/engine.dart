@@ -370,6 +370,7 @@ class EngineClient {
     final root = _repoRoot();
     final ffmpegDir = Directory(p.join(root, 'bin', 'ffmpeg'));
     final asrDir = Directory(p.join(root, 'bin', 'crispasr'));
+    final llamaDir = Directory(p.join(root, 'bin', 'llama'));
     final dictDir = Directory(p.join(root, 'engine', 'GalTransl', 'Dict'));
     final ffmpeg = _firstFile([
       p.join(ffmpegDir.path, 'bin', 'ffmpeg.exe'),
@@ -389,6 +390,19 @@ class EngineClient {
       p.join(asrDir.path, 'crispasr'),
     ]);
     final ggufs = _listNames(asrDir, '.gguf');
+    final llamaModels = _listNames(llamaDir, '.gguf')
+        .where(
+          (name) =>
+              !RegExp(
+                r'-\d{5}-of-\d{5}\.gguf$',
+                caseSensitive: false,
+              ).hasMatch(name) ||
+              RegExp(
+                r'-00001-of-\d{5}\.gguf$',
+                caseSensitive: false,
+              ).hasMatch(name),
+        )
+        .toList();
     final models = [
       for (final name in ggufs)
         if (!name.toLowerCase().contains('aligner') &&
@@ -461,6 +475,17 @@ class EngineClient {
           'voxtral4b',
           'granite',
         ],
+      },
+      'llama': {
+        'dir': llamaDir.path,
+        'executable':
+            _firstFile([p.join(llamaDir.path, 'llama-server.exe')]) ?? '',
+        'models': llamaModels,
+        'host': '127.0.0.1',
+        'port': 18766,
+        'endpoint': 'http://127.0.0.1:18766/v1',
+        'locked': true,
+        'status': 'stopped',
       },
       'dict_dir': dictDir.path,
       'gt_dicts': dicts,

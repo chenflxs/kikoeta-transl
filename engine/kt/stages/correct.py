@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import queue
 import re
+from dataclasses import replace
 from threading import Event, Thread
 
 from ..subtitle import normalize_cue_timeline
@@ -74,7 +75,48 @@ def correct_cues(
     stop_event: Event | None = None,
 ) -> list[Cue]:
     raise_if_cancelled(stop_event)
-    endpoint = settings.correct
+    if not cues:
+        _emit_log(emit, file, "矫正跳过：没有可用字幕条目")
+        return []
+    if settings.correct.provider == "local_llama":
+        from ..llama_runtime import local_llama_session
+
+        _emit_log(emit, file, "正在准备本地 Llama 模型")
+        with local_llama_session(settings, stop_event) as (_, openai_base, model_id):
+            endpoint = replace(
+                settings.correct,
+                base_url=openai_base,
+                model=model_id,
+                api_key="",
+            )
+            _emit_log(emit, file, f"本地 Llama 已就绪：{settings.llama_model}")
+            return _correct_cues_with_endpoint(
+                cues,
+                endpoint,
+                "",
+                emit=emit,
+                file=file,
+                stop_event=stop_event,
+            )
+    return _correct_cues_with_endpoint(
+        cues,
+        settings.correct,
+        settings.proxy,
+        emit=emit,
+        file=file,
+        stop_event=stop_event,
+    )
+
+
+def _correct_cues_with_endpoint(
+    cues: list[Cue],
+    endpoint: CorrectionSettings,
+    proxy: str,
+    *,
+    emit: EmitFn | None = None,
+    file: str | None = None,
+    stop_event: Event | None = None,
+) -> list[Cue]:
     if not endpoint.base_url or not endpoint.model:
         raise RuntimeError("未配置矫正模型的 API 地址与模型名")
 
@@ -111,7 +153,7 @@ def correct_cues(
             content = _chat_with_cancellation(
                 endpoint,
                 user_text,
-                settings.proxy,
+                proxy,
                 stop_event,
             )
             raise_if_cancelled(stop_event)
@@ -207,14 +249,28 @@ def _chat_with_cancellation(
 
 
 def test_correct(settings: AppSettings) -> str:
-    endpoint = settings.correct
+    if settings.correct.provider == "local_llama":
+        from ..llama_runtime import local_llama_session
+
+        with local_llama_session(settings) as (_, openai_base, model_id):
+            endpoint = replace(
+                settings.correct,
+                base_url=openai_base,
+                model=model_id,
+                api_key="",
+            )
+            return _test_correct_endpoint(endpoint, "")
+    return _test_correct_endpoint(settings.correct, settings.proxy)
+
+
+def _test_correct_endpoint(endpoint: CorrectionSettings, proxy: str) -> str:
     if not endpoint.base_url or not endpoint.model:
         raise RuntimeError("未配置矫正模型")
     cues = [Cue(start=0, end=1, message="こんにちは")]
     content = _chat(
         endpoint,
         _build_correction_input(cues, cues, 0),
-        settings.proxy,
+        proxy,
     )
     _extract_corrected_messages(content, cues)
     return "ok"

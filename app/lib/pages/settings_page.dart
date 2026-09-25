@@ -222,27 +222,87 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<({String tag, String url})> _fetchLatestRelease() async {
+    const headers = {
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': 'Kikoeta-Transl',
+    };
+    final apiResponse = await http
+        .get(
+          Uri.parse(
+            'https://api.github.com/repos/chenflxs/kikoeta-transl/releases/latest',
+          ),
+          headers: headers,
+        )
+        .timeout(const Duration(seconds: 15));
+    if (apiResponse.statusCode == 200) {
+      final release = jsonDecode(apiResponse.body) as Map<String, dynamic>;
+      final tag = (release['tag_name'] as String?)?.trim();
+      final url = (release['html_url'] as String?)?.trim();
+      if (tag == null || tag.isEmpty) {
+        throw const FormatException('GitHub Release 未提供版本号');
+      }
+      return (
+        tag: tag,
+        url: url?.isNotEmpty == true ? url! : '$_repositoryUrl/releases',
+      );
+    }
+
+    if (apiResponse.statusCode != 403) {
+      throw HttpException('GitHub 返回 ${apiResponse.statusCode}');
+    }
+
+    // The unauthenticated REST API is rate limited. The public Atom feed is
+    // served by github.com and does not consume that API quota.
+    final feedResponse = await http
+        .get(
+          Uri.parse('$_repositoryUrl/releases.atom'),
+          headers: const {'User-Agent': 'Kikoeta-Transl'},
+        )
+        .timeout(const Duration(seconds: 15));
+    if (feedResponse.statusCode != 200) {
+      throw HttpException(
+        'GitHub API 返回 403，Release Feed 返回 ${feedResponse.statusCode}',
+      );
+    }
+    final entry = RegExp(
+      r'<entry\b[^>]*>([\s\S]*?)</entry>',
+      caseSensitive: false,
+    ).firstMatch(feedResponse.body)?.group(1);
+    if (entry == null) throw const FormatException('Release Feed 中没有发布版本');
+    final rawTag = RegExp(
+      r'<title\b[^>]*>([\s\S]*?)</title>',
+      caseSensitive: false,
+    ).firstMatch(entry)?.group(1);
+    final tag = rawTag?.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+    final rawUrl = RegExp(
+      r'<link\b[^>]*href="([^"]+)"[^>]*/?>',
+      caseSensitive: false,
+    ).firstMatch(entry)?.group(1);
+    if (tag == null || tag.isEmpty) {
+      throw const FormatException('Release Feed 未提供版本号');
+    }
+    return (
+      tag: _decodeXml(tag),
+      url: rawUrl == null ? '$_repositoryUrl/releases' : _decodeXml(rawUrl),
+    );
+  }
+
+  String _decodeXml(String value) => value
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'");
+
   Future<void> _checkForUpdate() async {
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
     String message;
     try {
-      final response = await http
-          .get(
-            Uri.parse(
-              'https://api.github.com/repos/chenflxs/kikoeta-transl/releases/latest',
-            ),
-            headers: const {'Accept': 'application/vnd.github+json'},
-          )
-          .timeout(const Duration(seconds: 15));
-      if (response.statusCode != 200) {
-        throw HttpException('GitHub 返回 ${response.statusCode}');
-      }
-      final release = jsonDecode(response.body) as Map<String, dynamic>;
-      final tag = (release['tag_name'] as String?)?.trim();
-      final url =
-          (release['html_url'] as String?)?.trim() ?? '$_repositoryUrl/releases';
-      if (tag == null || tag.isEmpty) throw const FormatException('未找到版本号');
+      final release = await _fetchLatestRelease();
+      final tag = release.tag;
+      final url = release.url;
       final latest = tag.replaceFirst(RegExp(r'^[vV]'), '').split('+').first;
       final currentParts = _currentVersion.split('.').map(int.parse).toList();
       final latestParts = latest.split('.').map(int.tryParse).toList();

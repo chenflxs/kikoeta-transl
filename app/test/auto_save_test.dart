@@ -94,6 +94,28 @@ void main() {
     app.dispose();
   });
 
+  testWidgets('output page saves LLS sync and reveals authentication fields', (
+    tester,
+  ) async {
+    final engine = FakeEngine();
+    final app = AppState(engine: engine)..settings = initialSettings();
+    app.tab = 5;
+    app.tabNotifier.value = 5;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: OutputPage(app: app)),
+      ),
+    );
+    await tester.tap(find.text('来自 Kikoeta 的翻译请求，产物同步上传到 Kikoeta-LLS'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kikoeta-LLS 地址（HTTP/HTTPS）'), findsOneWidget);
+    await app.selectTab(0);
+    expect(engine.stored['output']['lls_sync'], true);
+    expect(engine.stored['output']['lls_auth_mode'], 'key');
+    await tester.pumpWidget(const SizedBox.shrink());
+    app.dispose();
+  });
+
   testWidgets('unchanged page does not write settings', (tester) async {
     final engine = FakeEngine();
     final app = AppState(engine: engine)..settings = initialSettings();

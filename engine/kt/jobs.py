@@ -10,9 +10,10 @@ from typing import Any
 
 from .events import EventBus
 from .kikoeta_cache import cache_completed_job
+from .lls_sync import sync_completed_job
 from .llama_runtime import LLAMA_RUNTIME
 from .cleanup import cleanup_intermediates
-from .models import AppSettings, FileResult, JobRequest, StageFlags
+from .models import AppSettings, FileResult, JobRequest, OutputSettings, StageFlags
 from .paths import WORK_DIR
 from .pipeline import process_file
 from .recent import record_finished_job
@@ -31,6 +32,7 @@ class Job:
     settings: AppSettings
     source: str = "desktop"
     cache_context: dict[str, Any] = field(default_factory=dict)
+    lls_output: OutputSettings | None = None
     cleanup_paths: list[str] = field(default_factory=list)
     status: str = "queued"
     created_at: str = field(default_factory=_now)
@@ -60,7 +62,8 @@ class JobManager:
         files = [path for path in request.files if str(path).strip()]
         if not files:
             raise ValueError("没有输入文件")
-        settings = merge_settings(load_settings(), request.settings_override)
+        saved_settings = load_settings()
+        settings = merge_settings(saved_settings, request.settings_override)
         job = Job(
             job_id=uuid.uuid4().hex[:12],
             files=files,
@@ -68,6 +71,7 @@ class JobManager:
             settings=settings,
             source=source,
             cache_context=dict(request.cache_context),
+            lls_output=saved_settings.output if source == "kikoeta" else None,
             cleanup_paths=list(request.cleanup_paths),
         )
         self._jobs[job.job_id] = job
@@ -156,6 +160,21 @@ class JobManager:
                     job.bus.emit("log", message=f"已缓存 {cached} 个 kikoeta 歌词结果")
             except Exception as exc:
                 job.bus.emit("log", message=f"保存 kikoeta 缓存失败：{exc}")
+            try:
+                if job.lls_output is not None:
+                    uploaded = sync_completed_job(job, job.lls_output)
+                else:
+                    uploaded = 0
+                if uploaded:
+                    job.bus.emit("log", message=f"已同步 {uploaded} 个歌词文件到 Kikoeta-LLS")
+                elif (
+                    job.lls_output is not None
+                    and job.lls_output.lls_sync
+                    and job.status == "completed"
+                ):
+                    job.bus.emit("log", message="没有可同步到 Kikoeta-LLS 的歌词文件")
+            except Exception as exc:
+                job.bus.emit("log", message=f"同步到 Kikoeta-LLS 失败：{exc}")
             try:
                 record_finished_job(job)
             except Exception as exc:

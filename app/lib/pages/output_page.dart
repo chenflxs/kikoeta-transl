@@ -25,7 +25,13 @@ class OutputPage extends StatefulWidget {
 
 class _OutputPageState extends State<OutputPage> {
   late final TextEditingController directory;
+  late final TextEditingController llsUrl;
+  late final TextEditingController llsUsername;
+  late final TextEditingController llsPassword;
+  late final TextEditingController llsKey;
   late String preset;
+  late bool llsSync;
+  late String llsAuthMode;
   late String _savedDraft;
   late final VoidCallback _unregisterPageSaver;
   bool _settingsSynced = false;
@@ -36,6 +42,16 @@ class _OutputPageState extends State<OutputPage> {
     final output = (widget.app.settings['output'] as Map?) ?? {};
     directory = TextEditingController(text: '${output['directory'] ?? ''}');
     preset = _presetOf(output);
+    llsSync = output['lls_sync'] == true;
+    llsAuthMode = output['lls_auth_mode'] == 'basic' ? 'basic' : 'key';
+    llsUrl = TextEditingController(text: '${output['lls_url'] ?? ''}');
+    llsUsername = TextEditingController(
+      text: '${output['lls_username'] ?? ''}',
+    );
+    llsPassword = TextEditingController(
+      text: '${output['lls_password'] ?? ''}',
+    );
+    llsKey = TextEditingController(text: '${output['lls_key'] ?? ''}');
     _savedDraft = _draft();
     _settingsSynced = widget.app.settings.isNotEmpty;
     _unregisterPageSaver = widget.app.registerPageSaver(
@@ -45,7 +61,16 @@ class _OutputPageState extends State<OutputPage> {
     widget.app.addListener(_syncSettings);
   }
 
-  String _draft() => jsonEncode([directory.text, preset]);
+  String _draft() => jsonEncode([
+    directory.text,
+    preset,
+    llsSync,
+    llsAuthMode,
+    llsUrl.text,
+    llsUsername.text,
+    llsPassword.text,
+    llsKey.text,
+  ]);
 
   void _syncSettings() {
     if (!mounted || _settingsSynced || widget.app.settings.isEmpty) return;
@@ -53,7 +78,15 @@ class _OutputPageState extends State<OutputPage> {
     if (_draft() != _savedDraft) return;
     final output = (widget.app.settings['output'] as Map?) ?? {};
     directory.text = '${output['directory'] ?? ''}';
-    setState(() => preset = _presetOf(output));
+    llsUrl.text = '${output['lls_url'] ?? ''}';
+    llsUsername.text = '${output['lls_username'] ?? ''}';
+    llsPassword.text = '${output['lls_password'] ?? ''}';
+    llsKey.text = '${output['lls_key'] ?? ''}';
+    setState(() {
+      preset = _presetOf(output);
+      llsSync = output['lls_sync'] == true;
+      llsAuthMode = output['lls_auth_mode'] == 'basic' ? 'basic' : 'key';
+    });
     _savedDraft = _draft();
   }
 
@@ -62,6 +95,10 @@ class _OutputPageState extends State<OutputPage> {
     _unregisterPageSaver();
     widget.app.removeListener(_syncSettings);
     directory.dispose();
+    llsUrl.dispose();
+    llsUsername.dispose();
+    llsPassword.dispose();
+    llsKey.dispose();
     super.dispose();
   }
 
@@ -96,6 +133,12 @@ class _OutputPageState extends State<OutputPage> {
         outputPreset.startsWith('bilingual_') ||
         outputPreset.startsWith('source_target_');
     final fmt = outputPreset.endsWith('srt') ? 'srt' : 'lrc';
+    final sync = llsSync;
+    final authMode = llsAuthMode;
+    final url = llsUrl.text.trim();
+    final username = llsUsername.text.trim();
+    final password = llsPassword.text;
+    final key = llsKey.text.trim();
     await widget.app.updateSettings((next) {
       next['output'] = {
         ...(next['output'] as Map? ?? {}),
@@ -103,6 +146,12 @@ class _OutputPageState extends State<OutputPage> {
         'preset': outputPreset,
         'formats': [fmt],
         'bilingual': bilingual,
+        'lls_sync': sync,
+        'lls_url': url,
+        'lls_auth_mode': authMode,
+        'lls_username': username,
+        'lls_password': password,
+        'lls_key': key,
       };
     });
     _savedDraft = draft;
@@ -170,6 +219,49 @@ class _OutputPageState extends State<OutputPage> {
             ),
           ],
         ),
+        const SectionTitle('Kikoeta-LLS'),
+        KtGroup(
+          children: [
+            KtSwitchRow(
+              icon: Icons.cloud_upload_outlined,
+              title: '来自 Kikoeta 的翻译请求，产物同步上传到 Kikoeta-LLS',
+              sub: '任务成功完成后上传歌词；本地任务不受影响',
+              value: llsSync,
+              onChanged: (value) => setState(() => llsSync = value),
+              showDivider: false,
+            ),
+          ],
+        ),
+        if (llsSync) ...[
+          const SizedBox(height: 10),
+          KtGroup(
+            children: [
+              KtField(
+                controller: llsUrl,
+                label: 'Kikoeta-LLS 地址（HTTP/HTTPS）',
+                hint: '留空使用本机 http://127.0.0.1:2378',
+              ),
+              KtSelectField<String>(
+                label: '上传验证方式',
+                value: llsAuthMode,
+                values: const ['key', 'basic'],
+                labelOf: (value) => value == 'key' ? '12 位密钥' : '独立账号和密码',
+                onChanged: (value) => setState(() => llsAuthMode = value),
+              ),
+              if (llsAuthMode == 'key')
+                KtField(
+                  controller: llsKey,
+                  label: '上传密钥',
+                  hint: '在 Kikoeta-LLS 设置页生成或手动设置 12 位密钥',
+                  obscure: true,
+                )
+              else ...[
+                KtField(controller: llsUsername, label: '上传账号'),
+                KtField(controller: llsPassword, label: '上传密码', obscure: true),
+              ],
+            ],
+          ),
+        ],
         const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,

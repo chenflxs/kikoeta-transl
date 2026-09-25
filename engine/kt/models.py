@@ -219,6 +219,12 @@ class OutputSettings:
     # Optional suffix inserted before the output extension, e.g. ".fix" or
     # ".zh". An empty suffix preserves the historical file name.
     suffix: str = ""
+    lls_sync: bool = False
+    lls_url: str = ""
+    lls_auth_mode: str = "key"
+    lls_username: str = ""
+    lls_password: str = ""
+    lls_key: str = ""
 
 
 @dataclass
@@ -480,6 +486,12 @@ def _output_from_dict(output: dict[str, Any], formats: list[Any]) -> OutputSetti
         bilingual=preset_bilingual(preset),
         keep_gt_cache=bool(output.get("keep_gt_cache", True)),
         suffix=str(output.get("suffix") or ""),
+        lls_sync=_as_bool(output.get("lls_sync"), False),
+        lls_url=str(output.get("lls_url") or ""),
+        lls_auth_mode="basic" if output.get("lls_auth_mode") == "basic" else "key",
+        lls_username=str(output.get("lls_username") or ""),
+        lls_password=str(output.get("lls_password") or ""),
+        lls_key=str(output.get("lls_key") or ""),
     )
 
 

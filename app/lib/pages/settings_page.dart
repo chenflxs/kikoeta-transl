@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_state.dart';
 import '../widgets.dart';
@@ -18,7 +19,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static const _repositoryUrl = 'https://github.com/chenflxs/kikoeta-transl';
-  static const _currentVersion = '0.1.1';
   late final TextEditingController ffmpeg;
   late final TextEditingController crispasr;
   late final TextEditingController proxy;
@@ -300,11 +300,13 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _checkingUpdate = true);
     String message;
     try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
       final release = await _fetchLatestRelease();
       final tag = release.tag;
       final url = release.url;
       final latest = tag.replaceFirst(RegExp(r'^[vV]'), '').split('+').first;
-      final currentParts = _currentVersion.split('.').map(int.parse).toList();
+      final currentParts = currentVersion.split('.').map(int.parse).toList();
       final latestParts = latest.split('.').map(int.tryParse).toList();
       var comparison = 0;
       for (var i = 0; i < 3; i++) {
@@ -317,10 +319,10 @@ class _SettingsPageState extends State<SettingsPage> {
         }
       }
       if (comparison > 0) {
-        message = '发现新版本 $tag（当前 $_currentVersion）';
+        message = '发现新版本 $tag（当前 $currentVersion）';
         await _openUrl(url);
       } else {
-        message = '当前已是最新版本（$_currentVersion）';
+        message = '当前已是最新版本（$currentVersion）';
       }
     } catch (error) {
       message = '检查更新失败：$error';
@@ -328,7 +330,9 @@ class _SettingsPageState extends State<SettingsPage> {
       if (mounted) setState(() => _checkingUpdate = false);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

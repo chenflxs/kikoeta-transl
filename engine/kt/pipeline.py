@@ -10,6 +10,7 @@ from .events import EmitFn
 from .models import AppSettings, Cue, FileKind, FileResult, StageFlags
 from .paths import MEDIA_EXTS, SUBTITLE_EXTS
 from .stages.export import export_cues
+from .stages.correction_result import CorrectionReview
 from .subtitle import parse_subtitle
 
 
@@ -38,6 +39,7 @@ def process_file(
     result = FileResult(path=path, kind=kind)
     wav = None
     workspace = job_dir / "gt"
+    correction_review = None
     try:
         _raise_if_stopped(stop_event)
         if kind == "subtitle":
@@ -84,12 +86,14 @@ def process_file(
             emit("status", file=path, stage="correcting", message="小模型矫正")
             result.stage = "correcting"
             from .stages.correct import correct_cues
+            correction_review = CorrectionReview(source_file=path)
             cues = correct_cues(
                 cues,
                 settings,
                 emit=emit,
                 file=path,
                 stop_event=stop_event,
+                review=correction_review,
             )
             _raise_if_stopped(stop_event)
             if damaged_asr:
@@ -133,6 +137,10 @@ def process_file(
                 output=replace(settings.output, suffix=suffix),
             )
         outputs = export_cues(cues, path, export_settings, src_cues=src_cues)
+        if correction_review is not None:
+            report_path = correction_review.write(outputs[0])
+            outputs.append(report_path)
+            emit("log", file=path, message=f"矫正记录已保存：{report_path}，含修改前后文本、待回听条目和时间轴问题")
         result.outputs = outputs
         result.status = "done"
         result.stage = "done"

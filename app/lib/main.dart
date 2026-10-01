@@ -176,6 +176,19 @@ class _KtAppState extends State<KtApp> with WindowListener, tray.TrayListener {
 
   Future<void> _terminateApplication() async {
     try {
+      await appState.flushSettings();
+    } catch (error) {
+      _closing = false;
+      final context = navigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('设置保存失败，尚未退出：$error')),
+        );
+      }
+      return;
+    }
+
+    try {
       await tray.trayManager.destroy().timeout(
         const Duration(milliseconds: 150),
       );

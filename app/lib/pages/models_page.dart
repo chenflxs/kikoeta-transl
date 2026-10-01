@@ -76,32 +76,7 @@ class _ModelsPageState extends State<ModelsPage> {
       () => _save(auto: true),
     );
     widget.app.addListener(_syncSettings);
-    widget.app.addListener(_syncLocalModelsFromTools);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncSettings());
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _syncLocalModelsFromTools(),
-    );
-  }
-
-  void _syncLocalModelsFromTools() {
-    if (!mounted) return;
-    final models = _ids(_asr['models']);
-    final aligners = _ids(_asr['aligners']);
-    final llamaModels = _ids(_llama['models']);
-    var changed = false;
-    if (asrModel.text.trim().isEmpty && models.isNotEmpty) {
-      asrModel.text = models.first;
-      changed = true;
-    }
-    if (asrAligner.text.trim().isEmpty && aligners.isNotEmpty) {
-      asrAligner.text = aligners.first;
-      changed = true;
-    }
-    if (llamaModel.text.trim().isEmpty && llamaModels.isNotEmpty) {
-      llamaModel.text = llamaModels.first;
-      changed = true;
-    }
-    if (changed) setState(() {});
   }
 
   void _syncSettings() {
@@ -172,7 +147,6 @@ class _ModelsPageState extends State<ModelsPage> {
   @override
   void dispose() {
     _unregisterPageSaver();
-    widget.app.removeListener(_syncLocalModelsFromTools);
     widget.app.removeListener(_syncSettings);
     asrModel.dispose();
     asrAligner.dispose();
@@ -292,13 +266,6 @@ class _ModelsPageState extends State<ModelsPage> {
     try {
       await widget.app.refreshTools();
       final models = _ids(_asr['models']);
-      final aligners = _ids(_asr['aligners']);
-      if (asrModel.text.trim().isEmpty && models.isNotEmpty) {
-        asrModel.text = models.first;
-      }
-      if (asrAligner.text.trim().isEmpty && aligners.isNotEmpty) {
-        asrAligner.text = aligners.first;
-      }
       final dir = '${_asr['dir'] ?? ''}';
       if (models.isEmpty) {
         _toast(dir.isEmpty ? '未扫描到 ASR 模型' : '未扫描到 ASR 模型：$dir');
@@ -321,9 +288,6 @@ class _ModelsPageState extends State<ModelsPage> {
     try {
       await widget.app.refreshTools();
       final models = _ids(_llama['models']);
-      if (!models.contains(llamaModel.text.trim())) {
-        llamaModel.text = models.isEmpty ? '' : models.first;
-      }
       final dir = '${_llama['dir'] ?? ''}';
       if (models.isEmpty) {
         _toast(dir.isEmpty ? '未扫描到 Llama 模型' : '未扫描到 Llama 模型：$dir');

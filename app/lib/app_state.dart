@@ -85,12 +85,16 @@ class AppState extends ChangeNotifier {
     };
   }
 
+  Future<void> flushSettings() async {
+    await _pageSavers[tab]?.call();
+    await _settingsWrite;
+  }
+
   Future<void> selectTab(int index) async {
     if (index == tab || _switchingTab) return;
     _switchingTab = true;
     try {
-      await _pageSavers[tab]?.call();
-      await _settingsWrite;
+      await flushSettings();
     } finally {
       _switchingTab = false;
     }

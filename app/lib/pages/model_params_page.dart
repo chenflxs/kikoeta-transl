@@ -213,8 +213,8 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
           children: [
             KtField(
               controller: correctPrompt,
-              label: '校对系统 Prompt',
-              hint: '留空则使用内置 ASR 校对提示词',
+              label: '补充校对要求（可选）',
+              hint: '内置规则始终生效；含混内容保留原文，并写入矫正记录供回听',
               maxLines: 6,
             ),
             KtField(

@@ -14,8 +14,12 @@ from ..cancellation import TaskCancelled, raise_if_cancelled
 from ..events import EmitFn
 from ..models import AppSettings, Cue, cues_to_gt_json
 from ..paths import GALTRANSL_ROOT
+from .translation_result import TranslationReview
 from .translation_result import looks_untranslated as _looks_untranslated
 from .translation_result import merge_translation_items as _merge_translation_items
+
+
+TRANSLATION_RETRY_LIMIT = 3
 
 
 def ensure_galtransl_path() -> None:
@@ -40,8 +44,11 @@ def translate_cues(
     settings: AppSettings,
     emit: EmitFn | None = None,
     stop_event: Event | None = None,
+    review: TranslationReview | None = None,
 ) -> list[Cue]:
     raise_if_cancelled(stop_event)
+    if review is not None:
+        review.entries.clear()
     if settings.translate.provider == "local_llama":
         from ..llama_runtime import local_llama_session
 
@@ -68,6 +75,7 @@ def translate_cues(
                 local_settings,
                 emit=emit,
                 stop_event=stop_event,
+                review=review,
             )
     return _translate_and_repair(
         cues,
@@ -75,6 +83,7 @@ def translate_cues(
         settings,
         emit=emit,
         stop_event=stop_event,
+        review=review,
     )
 
 
@@ -84,6 +93,7 @@ def _translate_and_repair(
     settings: AppSettings,
     emit: EmitFn | None = None,
     stop_event: Event | None = None,
+    review: TranslationReview | None = None,
 ) -> list[Cue]:
     translated = _translate_cues(
         cues, workspace, settings, emit=emit, stop_event=stop_event
@@ -103,11 +113,11 @@ def _translate_and_repair(
     if emit:
         emit(
             "log",
-            message=f"检测到 {len(suspicious)} 条字幕可能漏译，正在逐条补译（最多两轮）",
+            message=f"检测到 {len(suspicious)} 条字幕可能漏译，正在逐条补译（最多 {TRANSLATION_RETRY_LIMIT} 次）",
         )
 
     repaired = 0
-    for attempt in range(1, 3):
+    for attempt in range(1, TRANSLATION_RETRY_LIMIT + 1):
         pending = []
         for index in suspicious:
             raise_if_cancelled(stop_event)
@@ -127,7 +137,7 @@ def _translate_and_repair(
                 prompt="\n\n".join(filter(None, [settings.translate.prompt, requirements])),
             ))
             if emit:
-                emit("log", message=f"补译第 {attempt}/2 轮：字幕 {index + 1}，时间 {cues[index].start:.3f}s")
+                emit("log", message=f"补译第 {attempt}/{TRANSLATION_RETRY_LIMIT} 轮：字幕 {index + 1}，时间 {cues[index].start:.3f}s")
             try:
                 retried = _translate_cues(
                     [cues[index]], workspace / "translation_retry" / f"round_{attempt}" / f"cue_{index + 1}",
@@ -152,12 +162,14 @@ def _translate_and_repair(
             break
     raise_if_cancelled(stop_event)
     if suspicious:
-        positions = ", ".join(f"{index + 1} ({cues[index].start:.3f}s)" for index in suspicious[:20])
-        raise RuntimeError(
-            f"补译后仍有 {len(suspicious)} 条字幕未译出：{positions}。"
-            "未导出此次翻译结果，请检查翻译模型、提示词或接口后重试"
-        )
-    if emit:
+        for index in suspicious:
+            if not translated[index].message.strip():
+                translated[index].message = cues[index].message
+            if review is not None:
+                review.add(index + 1, cues[index], translated[index], TRANSLATION_RETRY_LIMIT)
+        if emit:
+            emit("log", message=f"补译完成：修复 {repaired} 条，仍有 {len(suspicious)} 条疑似漏译；保留现有文本并继续导出，未翻译位置将写入目录记录")
+    elif emit:
         emit("log", message=f"补译完成：修复 {repaired} 条疑似漏译字幕")
     return translated
 

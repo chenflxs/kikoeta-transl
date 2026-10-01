@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from threading import Lock
 
 from ..models import AppSettings, Cue
 
@@ -91,3 +95,40 @@ def language_code(value: str) -> str:
     if language.startswith("ja-"):
         return "ja"
     return language
+
+
+_REPORT_LOCK = Lock()
+UNTRANSLATED_REPORT_NAME = "未翻译记录.txt"
+
+
+@dataclass
+class TranslationReview:
+    source_file: str = ""
+    entries: list[dict] = field(default_factory=list)
+
+    def add(self, index: int, source: Cue, result: Cue, attempts: int) -> None:
+        self.entries.append(dict(index=index, start=source.start, end=source.end,
+            original=source.message, output=result.message, attempts=attempts))
+
+    def write(self, subtitle_path: str | Path) -> str | None:
+        if not self.entries:
+            return None
+        subtitle = Path(subtitle_path)
+        destination = subtitle.parent / UNTRANSLATED_REPORT_NAME
+        timestamp = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+        lines = [f"记录时间：{timestamp}（北京时间）", f"原文件：{self.source_file}",
+                 f"输出歌词：{subtitle}", f"未翻译条目：{len(self.entries)}"]
+        for entry in self.entries:
+            lines.extend([
+                f"  第 {entry['index']} 条，时间 {entry['start']:.3f}s → {entry['end']:.3f}s，"
+                f"补译 {entry['attempts']} 次后仍疑似未翻译",
+                f"    原文：{entry['original']}", f"    输出：{entry['output']}",
+            ])
+        block = "\n".join(lines) + "\n\n"
+        # Jobs process their files sequentially. Protect whole append blocks
+        # when several job threads finish files in the same output directory.
+        with _REPORT_LOCK:
+            header = "" if destination.exists() and destination.stat().st_size else "未翻译位置记录（按处理顺序追加）\n\n"
+            with destination.open("a", encoding="utf-8", newline="\n") as stream:
+                stream.write(header + block)
+        return str(destination)

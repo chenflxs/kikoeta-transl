@@ -11,6 +11,7 @@ from .models import AppSettings, Cue, FileKind, FileResult, StageFlags
 from .paths import MEDIA_EXTS, SUBTITLE_EXTS
 from .stages.export import export_cues
 from .stages.correction_result import CorrectionReview
+from .stages.translation_result import TranslationReview
 from .subtitle import parse_subtitle
 
 
@@ -40,6 +41,7 @@ def process_file(
     wav = None
     workspace = job_dir / "gt"
     correction_review = None
+    translation_review = None
     try:
         _raise_if_stopped(stop_event)
         if kind == "subtitle":
@@ -112,12 +114,14 @@ def process_file(
             emit("status", file=path, stage="translating", message="翻译")
             result.stage = "translating"
             from .stages.translate import translate_cues
+            translation_review = TranslationReview(source_file=path)
             cues = translate_cues(
                 cues,
                 workspace,
                 settings,
                 emit=emit,
                 stop_event=stop_event,
+                review=translation_review,
             )
 
         _raise_if_stopped(stop_event)
@@ -141,10 +145,17 @@ def process_file(
             report_path = correction_review.write(outputs[0])
             outputs.append(report_path)
             emit("log", file=path, message=f"矫正记录已保存：{report_path}，含修改前后文本、待回听条目和时间轴问题")
+        if translation_review is not None:
+            report_path = translation_review.write(outputs[0])
+            if report_path is not None:
+                outputs.append(report_path)
+                emit("log", file=path, message=f"未翻译位置已追加到：{report_path}")
         result.outputs = outputs
         result.status = "done"
         result.stage = "done"
         result.message = f"完成，产出 {len(outputs)} 个文件"
+        if translation_review is not None and translation_review.entries:
+            result.message += f"；仍有 {len(translation_review.entries)} 条疑似漏译，位置已记录"
         emit("file_done", file=path, outputs=outputs)
         return result
     except TaskCancelled:

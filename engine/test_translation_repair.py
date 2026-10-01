@@ -16,6 +16,7 @@ from kt.pipeline import process_file
 from kt.stages.translate import (
     _looks_untranslated, _merge_translation_items, ensure_galtransl_path, translate_cues,
 )
+from kt.stages.translation_result import TranslationReview, UNTRANSLATED_REPORT_NAME
 
 
 class TranslationRepairTests(unittest.TestCase):
@@ -111,12 +112,36 @@ class TranslationRepairTests(unittest.TestCase):
         self.assertEqual(backend.call_count, 4)
         self.assertNotEqual(backend.call_args_list[1].args[1], backend.call_args_list[3].args[1])
 
-    def test_persistent_untranslated_result_is_failure_with_cue_and_time(self):
+    def test_three_failed_repairs_preserve_result_and_record_position(self):
         cues = [Cue(7, 8, "こんにちは")]
+        review = TranslationReview()
         with patch("kt.stages.translate._translate_cues", return_value=cues) as backend:
-            with self.assertRaisesRegex(RuntimeError, r"1 \(7\.000s\).*未导出"):
-                translate_cues(cues, Path("synthetic-job"), self.settings)
-        self.assertEqual(backend.call_count, 3)
+            result = translate_cues(cues, Path("synthetic-job"), self.settings, review=review)
+        self.assertEqual(backend.call_count, 4)
+        self.assertEqual(result[0].message, "こんにちは")
+        self.assertEqual((review.entries[0]["index"], review.entries[0]["start"], review.entries[0]["attempts"]), (1, 7, 3))
+
+    def test_third_repair_can_succeed_without_remaining_issue(self):
+        cues = [Cue(1, 2, "こんにちは")]
+        review = TranslationReview()
+        with patch("kt.stages.translate._translate_cues", side_effect=[
+            cues, cues, cues, [Cue(1, 2, "你好")],
+        ]) as backend:
+            result = translate_cues(cues, Path("synthetic-job"), self.settings, review=review)
+        self.assertEqual(backend.call_count, 4)
+        self.assertEqual(result[0].message, "你好")
+        self.assertEqual(review.entries, [])
+
+    def test_empty_output_falls_back_to_original_after_failed_requests(self):
+        cues = [Cue(1, 2, "123")]
+        review = TranslationReview()
+        with patch("kt.stages.translate._translate_cues", side_effect=[
+            [Cue(1, 2, "")], RuntimeError("offline"), RuntimeError("offline"), RuntimeError("offline"),
+        ]) as backend:
+            result = translate_cues(cues, Path("synthetic-job"), self.settings, review=review)
+        self.assertEqual(backend.call_count, 4)
+        self.assertEqual(result[0].message, "123")
+        self.assertEqual(review.entries[0]["output"], "123")
 
     def test_short_backend_result_is_not_silently_accepted(self):
         with patch("kt.stages.translate._translate_cues", return_value=[]):
@@ -169,16 +194,106 @@ class TranslationRepairTests(unittest.TestCase):
         self.assertEqual([item["index"] for item in calls[0]], [1, 2])
         self.assertEqual(len(calls), 2)
 
-    def test_pipeline_does_not_export_untranslated_results_as_success(self):
+    def test_pipeline_exports_untranslated_results_with_directory_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)/"track.lrc"
             source.write_text("[00:01.000] こんにちは\n", encoding="utf-8")
             self.settings.output = OutputSettings(directory=tmp, preset="target_lrc")
             with patch("kt.stages.translate._translate_cues", return_value=[Cue(1, 4, "こんにちは")]):
                 result = process_file(str(source), self.settings, StageFlags(), Path(tmp)/"job", emit=lambda *_a, **_k: None)
-            self.assertEqual(result.status, "failed")
-            self.assertEqual(result.outputs, [])
+            self.assertEqual(result.status, "done", result.error)
+            self.assertEqual(len(result.outputs), 2)
+            self.assertIn("こんにちは", (Path(tmp)/"track.zh.lrc").read_text(encoding="utf-8"))
+            record = Path(result.outputs[1])
+            self.assertEqual(record.name, UNTRANSLATED_REPORT_NAME)
+            text = record.read_text(encoding="utf-8")
+            self.assertIn("第 1 条，时间 1.000s → 4.000s", text)
+            self.assertIn("补译 3 次", text)
+            self.assertIn("track.zh.lrc", text)
+            self.assertIn("仍有 1 条疑似漏译", result.message)
+
+    def test_multiple_lyrics_append_to_one_report_in_processing_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.settings.output = OutputSettings(directory=tmp, preset="target_lrc")
+            results = []
+            for name in ["first", "second"]:
+                source = Path(tmp)/f"{name}.lrc"
+                source.write_text("[00:07.000] こんにちは\n", encoding="utf-8")
+                with patch("kt.stages.translate._translate_cues", return_value=[Cue(7, 10, "こんにちは")]):
+                    results.append(process_file(str(source), self.settings, StageFlags(), Path(tmp)/name,
+                                                emit=lambda *_a, **_k: None))
+            self.assertTrue(all(result.status == "done" for result in results))
+            self.assertEqual(results[0].outputs[1], results[1].outputs[1])
+            self.assertEqual(len(list(Path(tmp).glob("*.txt"))), 1)
+            text = Path(results[0].outputs[1]).read_text(encoding="utf-8")
+            self.assertLess(text.index("first.zh.lrc"), text.index("second.zh.lrc"))
+            self.assertEqual(text.count("未翻译位置记录（按处理顺序追加）"), 1)
+
+    def test_successful_lyrics_do_not_create_or_clear_existing_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)/"track.lrc"
+            source.write_text("[00:01.000] こんにちは\n", encoding="utf-8")
+            self.settings.output = OutputSettings(directory=tmp, preset="target_lrc")
+            def run_success():
+                with patch("kt.stages.translate._translate_cues", return_value=[Cue(1, 4, "你好")]):
+                    return process_file(str(source), self.settings, StageFlags(), Path(tmp)/"job",
+                                        emit=lambda *_a, **_k: None)
+            result = run_success()
+            self.assertEqual(result.status, "done", result.error)
+            self.assertEqual(len(result.outputs), 1)
+            report = Path(tmp)/UNTRANSLATED_REPORT_NAME
+            self.assertFalse(report.exists())
+            report.write_text("此前歌词的漏译记录\n", encoding="utf-8")
+            result = run_success()
+            self.assertEqual(len(result.outputs), 1)
+            self.assertEqual(report.read_text(encoding="utf-8"), "此前歌词的漏译记录\n")
+
+    def test_existing_directory_report_is_appended_and_other_directories_are_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            report = folder/UNTRANSLATED_REPORT_NAME
+            report.write_text("之前的记录\n", encoding="utf-8")
+            review = TranslationReview(source_file="current.lrc")
+            review.add(2, Cue(3, 4, "待って"), Cue(3, 4, "稍等ね"), 3)
+            self.assertEqual(review.write(folder/"current.zh.lrc"), str(report))
+            text = report.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("之前的记录\n"))
+            self.assertIn("稍等ね", text)
+            other = folder/"other"
+            other.mkdir()
+            self.assertEqual(Path(review.write(other/"current.zh.srt")).parent, other)
+            self.assertEqual(report.read_text(encoding="utf-8"), text)
+
+    def test_directory_report_appends_whole_blocks_for_concurrent_jobs(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            def append(index):
+                review = TranslationReview(source_file=f"track-{index}.lrc")
+                review.add(index, Cue(index, index+1, "待って"), Cue(index, index+1, "待って"), 3)
+                return review.write(folder/f"track-{index}.zh.lrc")
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                outputs = list(pool.map(append, range(1, 9)))
+            self.assertEqual(len(set(outputs)), 1)
+            text = Path(outputs[0]).read_text(encoding="utf-8")
+            self.assertEqual(text.count("未翻译位置记录（按处理顺序追加）"), 1)
+            self.assertEqual(text.count("记录时间："), 8)
+            for index in range(1, 9):
+                self.assertIn(f"track-{index}.zh.lrc", text)
+
+    def test_cancellation_does_not_export_or_append_an_untranslated_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)/"track.lrc"
+            source.write_text("[00:01.000] こんにちは\n", encoding="utf-8")
+            self.settings.output = OutputSettings(directory=tmp, preset="target_lrc")
+            with patch("kt.stages.translate._translate_cues", side_effect=[
+                [Cue(1, 4, "こんにちは")], TaskCancelled(),
+            ]):
+                result = process_file(str(source), self.settings, StageFlags(), Path(tmp)/"job",
+                                      emit=lambda *_a, **_k: None)
+            self.assertEqual(result.status, "cancelled")
             self.assertFalse((Path(tmp)/"track.zh.lrc").exists())
+            self.assertFalse((Path(tmp)/UNTRANSLATED_REPORT_NAME).exists())
 
 
 if __name__ == "__main__":

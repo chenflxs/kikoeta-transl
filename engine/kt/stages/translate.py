@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from contextlib import contextmanager
 from dataclasses import replace
@@ -12,7 +13,7 @@ from threading import Event
 
 from ..cancellation import TaskCancelled, raise_if_cancelled
 from ..events import EmitFn
-from ..models import AppSettings, Cue, cues_from_gt_json, cues_to_gt_json
+from ..models import AppSettings, Cue, cues_to_gt_json
 from ..paths import GALTRANSL_ROOT
 
 
@@ -60,20 +61,82 @@ def translate_cues(
             local_settings = replace(settings, proxy="", translate=local_translate)
             if emit:
                 emit("log", message=f"本地 Llama 已就绪：{settings.llama_model}")
-            return _translate_cues(
+            return _translate_and_repair(
                 cues,
                 workspace,
                 local_settings,
                 emit=emit,
                 stop_event=stop_event,
             )
-    return _translate_cues(
+    return _translate_and_repair(
         cues,
         workspace,
         settings,
         emit=emit,
         stop_event=stop_event,
     )
+
+
+def _translate_and_repair(
+    cues: list[Cue],
+    workspace: Path,
+    settings: AppSettings,
+    emit: EmitFn | None = None,
+    stop_event: Event | None = None,
+) -> list[Cue]:
+    translated = _translate_cues(
+        cues, workspace, settings, emit=emit, stop_event=stop_event
+    )
+    suspicious = [
+        index
+        for index, (source, result) in enumerate(zip(cues, translated))
+        if _looks_untranslated(source, result, settings)
+    ]
+    if not suspicious:
+        return translated
+
+    raise_if_cancelled(stop_event)
+    if emit:
+        emit(
+            "log",
+            message=f"检测到 {len(suspicious)} 条字幕可能漏译，正在单独补译",
+        )
+
+    # Use an isolated project directory so GalTransl cannot reuse a cached
+    # untranslated result from the first pass.
+    retry_cues = [cues[index] for index in suspicious]
+    try:
+        retried = _translate_cues(
+            retry_cues,
+            workspace / "translation_retry",
+            settings,
+            emit=emit,
+            stop_event=stop_event,
+        )
+    except Exception as exc:
+        raise_if_cancelled(stop_event)
+        if emit:
+            emit("log", message=f"补译请求失败，保留首轮结果：{exc}")
+        return translated
+    repaired = 0
+    for index, retry in zip(suspicious, retried):
+        if not _looks_untranslated(cues[index], retry, settings):
+            translated[index].message = retry.message
+            repaired += 1
+
+    still_missing = len(suspicious) - repaired
+    if emit:
+        if still_missing:
+            emit(
+                "log",
+                message=(
+                    f"补译完成：修复 {repaired} 条，仍有 {still_missing} 条未能确认译出；"
+                    "已保留原文以避免字幕丢失"
+                ),
+            )
+        else:
+            emit("log", message=f"补译完成：修复 {repaired} 条疑似漏译字幕")
+    return translated
 
 
 def _translate_cues(
@@ -118,11 +181,110 @@ def _translate_cues(
     if not output_path.is_file():
         raise RuntimeError("GalTransl 未生成 gt_output/cues.json")
     items = json.loads(output_path.read_text(encoding="utf-8"))
-    translated = cues_from_gt_json(items, cues)
-    for src, dst in zip(cues, translated):
-        if not dst.src_message:
-            dst.src_message = src.message
-    return translated
+    if not isinstance(items, list):
+        raise RuntimeError("GalTransl 输出格式错误：字幕结果不是列表")
+    return _merge_translation_items(items, cues)
+
+
+def _merge_translation_items(items: list[dict], cues: list[Cue]) -> list[Cue]:
+    """Keep the original cue count/order even when a backend omits rows."""
+    out: list[Cue | None] = [None] * len(cues)
+    used: set[int] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        match = None
+        original_text = str(
+            item.get("src_message")
+            or item.get("org_message")
+            or item.get("src_msg")
+            or ""
+        )
+        if original_text:
+            match = next(
+                (
+                    index
+                    for index, cue in enumerate(cues)
+                    if index not in used
+                    and (cue.src_message or cue.message) == original_text
+                ),
+                None,
+            )
+        if "start" in item:
+            try:
+                start = float(item["start"])
+                end = float(item.get("end", start))
+                if match is None:
+                    match = next(
+                        (
+                            index
+                            for index, cue in enumerate(cues)
+                            if index not in used
+                            and abs(cue.start - start) < 0.01
+                            and abs(cue.end - end) < 0.01
+                        ),
+                        None,
+                    )
+            except (TypeError, ValueError):
+                pass
+        if match is None:
+            match = next((index for index in range(len(cues)) if index not in used), None)
+        if match is None:
+            break
+        used.add(match)
+        translated = Cue.from_mapping(item)
+        source = cues[match]
+        if translated.start == 0 and translated.end == 0:
+            translated.start, translated.end = source.start, source.end
+        translated.src_message = source.src_message or source.message
+        out[match] = translated
+
+    return [
+        cue if cue is not None else Cue(
+            start=source.start,
+            end=source.end,
+            message=source.message,
+            src_message=source.src_message or source.message,
+        )
+        for source, cue in zip(cues, out)
+    ]
+
+
+_KANA_RE = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff]")
+_CONTENT_RE = re.compile(r"(?:[^\W\d_]|[\u3400-\u9fff])", re.UNICODE)
+
+
+def _looks_untranslated(source: Cue, result: Cue, settings: AppSettings) -> bool:
+    original = source.src_message or source.message
+    translated = result.message
+    if not translated.strip():
+        return True
+
+    source_lang = _language_code(settings.source_lang)
+    target_lang = _language_code(settings.target_lang)
+    if source_lang == target_lang:
+        return False
+
+    normalize = lambda value: " ".join(value.split()).casefold()
+    if normalize(original) == normalize(translated):
+        return bool(_CONTENT_RE.search(original))
+
+    # Kana is distinctive to Japanese, while Chinese translations may share
+    # kanji. Catch Japanese fragments that survived inside a Chinese result.
+    if source_lang == "ja" and target_lang in {"zh", "zh-cn", "zh-tw"}:
+        source_kana = len(_KANA_RE.findall(original))
+        translated_kana = len(_KANA_RE.findall(translated))
+        return source_kana > 0 and translated_kana >= max(2, source_kana // 3)
+    return False
+
+
+def _language_code(value: str) -> str:
+    language = (value or "").strip().lower().replace("_", "-")
+    if language.startswith("zh-"):
+        return "zh"
+    if language.startswith("ja-"):
+        return "ja"
+    return language
 
 
 async def _run_job(workspace: Path, settings: AppSettings, stop_event):

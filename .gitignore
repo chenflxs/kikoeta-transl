@@ -69,6 +69,8 @@ tests/
 !app/test/
 app/test/*
 !app/test/auto_save_test.dart
+!app/test/settings_persistence_test.dart
+!app/test/lls_cache_push_test.dart
 Thumbs.db
 Desktop.ini
 .DS_Store

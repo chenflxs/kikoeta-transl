@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../settings_draft.dart';
 import '../widgets.dart';
 
 class ModelsPage extends StatefulWidget {
@@ -47,22 +48,24 @@ class _ModelsPageState extends State<ModelsPage> {
     final asr = (s['asr'] as Map?) ?? {};
     final correct = (s['correct'] as Map?) ?? {};
     final translate = (s['translate'] as Map?) ?? {};
-    // 不从本地设置回填 API 地址、模型名或密钥。
+    final openai = (translate['openai'] as Map?) ?? {};
     asrModel = TextEditingController(text: '${asr['model'] ?? ''}');
     asrAligner = TextEditingController(text: '${asr['aligner'] ?? ''}');
     asrBackend = TextEditingController(
       text: '${asr['backend'] ?? 'qwen3-1.7b'}',
     );
-    asrLang = TextEditingController(text: '${s['source_lang'] ?? 'ja'}');
+    asrLang = TextEditingController(
+      text: '${s['source_lang'] ?? asr['language'] ?? 'ja'}',
+    );
     llamaModel = TextEditingController(text: '${s['llama_model'] ?? ''}');
     correctProvider = _provider('${correct['provider'] ?? 'online'}');
     translateProvider = _provider('${translate['provider'] ?? 'online'}');
-    correctBase = TextEditingController();
-    correctModel = TextEditingController();
-    correctKey = TextEditingController();
-    transBase = TextEditingController();
-    transModel = TextEditingController();
-    transKey = TextEditingController();
+    correctBase = TextEditingController(text: '${correct['base_url'] ?? ''}');
+    correctModel = TextEditingController(text: '${correct['model'] ?? ''}');
+    correctKey = TextEditingController(text: '${correct['api_key'] ?? ''}');
+    transBase = TextEditingController(text: '${openai['base_url'] ?? ''}');
+    transModel = TextEditingController(text: '${openai['model'] ?? ''}');
+    transKey = TextEditingController(text: '${openai['api_key'] ?? ''}');
     translator = TextEditingController(
       text: '${translate['translator'] ?? 'ForGal-json'}',
     );
@@ -103,52 +106,68 @@ class _ModelsPageState extends State<ModelsPage> {
 
   void _syncSettings() {
     if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
-    if (_draft() != _savedDraft) {
-      settingsSynced = true;
-      return;
-    }
     final s = widget.app.settings;
     final asr = (s['asr'] as Map?) ?? {};
     final correct = (s['correct'] as Map?) ?? {};
     final translate = (s['translate'] as Map?) ?? {};
+    final openai = (translate['openai'] as Map?) ?? {};
+    final merged = mergeLoadedSettingsDraft(_savedDraft, _draftValues(), {
+      'asrModel': '${asr['model'] ?? ''}',
+      'asrAligner': '${asr['aligner'] ?? ''}',
+      'asrBackend': '${asr['backend'] ?? 'qwen3-1.7b'}',
+      'asrLang': '${s['source_lang'] ?? asr['language'] ?? 'ja'}',
+      'llamaModel': '${s['llama_model'] ?? ''}',
+      'correctProvider': _provider('${correct['provider'] ?? 'online'}'),
+      'correctBase': '${correct['base_url'] ?? ''}',
+      'correctModel': '${correct['model'] ?? ''}',
+      'correctKey': '${correct['api_key'] ?? ''}',
+      'translateProvider': _provider('${translate['provider'] ?? 'online'}'),
+      'transBase': '${openai['base_url'] ?? ''}',
+      'transModel': '${openai['model'] ?? ''}',
+      'transKey': '${openai['api_key'] ?? ''}',
+      'translator': '${translate['translator'] ?? 'ForGal-json'}',
+      'targetLang': '${s['target_lang'] ?? 'zh-cn'}',
+    });
     settingsSynced = true;
     setState(() {
-      asrModel.text = '${asr['model'] ?? ''}';
-      asrAligner.text = '${asr['aligner'] ?? ''}';
-      asrBackend.text = '${asr['backend'] ?? 'qwen3-1.7b'}';
-      asrLang.text = '${s['source_lang'] ?? asr['language'] ?? 'ja'}';
-      llamaModel.text = '${s['llama_model'] ?? ''}';
-      correctProvider = _provider('${correct['provider'] ?? 'online'}');
-      translateProvider = _provider('${translate['provider'] ?? 'online'}');
-      correctBase.clear();
-      correctModel.clear();
-      correctKey.clear();
-      transBase.clear();
-      transModel.clear();
-      transKey.clear();
-      translator.text = '${translate['translator'] ?? 'ForGal-json'}';
-      targetLang.text = '${s['target_lang'] ?? 'zh-cn'}';
+      asrModel.text = merged.values['asrModel'] as String;
+      asrAligner.text = merged.values['asrAligner'] as String;
+      asrBackend.text = merged.values['asrBackend'] as String;
+      asrLang.text = merged.values['asrLang'] as String;
+      llamaModel.text = merged.values['llamaModel'] as String;
+      correctProvider = merged.values['correctProvider'] as String;
+      correctBase.text = merged.values['correctBase'] as String;
+      correctModel.text = merged.values['correctModel'] as String;
+      correctKey.text = merged.values['correctKey'] as String;
+      translateProvider = merged.values['translateProvider'] as String;
+      transBase.text = merged.values['transBase'] as String;
+      transModel.text = merged.values['transModel'] as String;
+      transKey.text = merged.values['transKey'] as String;
+      translator.text = merged.values['translator'] as String;
+      targetLang.text = merged.values['targetLang'] as String;
     });
-    _savedDraft = _draft();
+    _savedDraft = merged.baseline;
   }
 
-  String _draft() => jsonEncode([
-    asrModel.text,
-    asrAligner.text,
-    asrBackend.text,
-    asrLang.text,
-    llamaModel.text,
-    correctProvider,
-    correctBase.text,
-    correctModel.text,
-    correctKey.text,
-    translateProvider,
-    transBase.text,
-    transModel.text,
-    transKey.text,
-    translator.text,
-    targetLang.text,
-  ]);
+  Map<String, dynamic> _draftValues() => {
+    'asrModel': asrModel.text,
+    'asrAligner': asrAligner.text,
+    'asrBackend': asrBackend.text,
+    'asrLang': asrLang.text,
+    'llamaModel': llamaModel.text,
+    'correctProvider': correctProvider,
+    'correctBase': correctBase.text,
+    'correctModel': correctModel.text,
+    'correctKey': correctKey.text,
+    'translateProvider': translateProvider,
+    'transBase': transBase.text,
+    'transModel': transModel.text,
+    'transKey': transKey.text,
+    'translator': translator.text,
+    'targetLang': targetLang.text,
+  };
+
+  String _draft() => jsonEncode(_draftValues());
 
   @override
   void dispose() {
@@ -247,26 +266,21 @@ class _ModelsPageState extends State<ModelsPage> {
       };
       final correct = Map<String, dynamic>.from(next['correct'] as Map? ?? {});
       correct['provider'] = correctionProvider;
-      if (correctionProvider == 'online') {
-        if (correctionBase.isNotEmpty) correct['base_url'] = correctionBase;
-        if (correctionModel.isNotEmpty) correct['model'] = correctionModel;
-        if (correctionKey.isNotEmpty) correct['api_key'] = correctionKey;
-      }
+      correct['base_url'] = correctionBase;
+      correct['model'] = correctionModel;
+      correct['api_key'] = correctionKey;
       next['correct'] = correct;
       final translate = Map<String, dynamic>.from(
         next['translate'] as Map? ?? {},
       );
       translate['provider'] = translationProvider;
       translate['translator'] = translationBackend;
-      if (translationProvider == 'online') {
-        final openai = Map<String, dynamic>.from(
-          translate['openai'] as Map? ?? {},
-        );
-        if (translationBase.isNotEmpty) openai['base_url'] = translationBase;
-        if (translationModel.isNotEmpty) openai['model'] = translationModel;
-        if (translationKey.isNotEmpty) openai['api_key'] = translationKey;
-        translate['openai'] = openai;
-      }
+      translate['openai'] = {
+        ...(translate['openai'] as Map? ?? {}),
+        'base_url': translationBase,
+        'model': translationModel,
+        'api_key': translationKey,
+      };
       next['translate'] = translate;
     });
     _savedDraft = draft;

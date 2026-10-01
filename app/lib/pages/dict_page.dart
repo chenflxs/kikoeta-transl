@@ -49,20 +49,19 @@ class DictPage extends StatelessWidget {
       return;
     }
 
-    final controller = TextEditingController(text: content);
+    if (!context.mounted) return;
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => _DictionaryEditorDialog(
         name: '${item['name'] ?? file.path}',
         path: file.path,
-        controller: controller,
-        onSave: () async {
-          await file.writeAsString(controller.text, encoding: utf8);
+        content: content,
+        onSave: (text) async {
+          await file.writeAsString(text, encoding: utf8);
           if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
         },
       ),
     );
-    controller.dispose();
     if (saved == true) {
       try {
         await app.refreshTools();
@@ -185,13 +184,13 @@ class DictPage extends StatelessWidget {
 class _DictionaryEditorDialog extends StatefulWidget {
   final String name;
   final String path;
-  final TextEditingController controller;
-  final Future<void> Function() onSave;
+  final String content;
+  final Future<void> Function(String) onSave;
 
   const _DictionaryEditorDialog({
     required this.name,
     required this.path,
-    required this.controller,
+    required this.content,
     required this.onSave,
   });
 
@@ -201,8 +200,21 @@ class _DictionaryEditorDialog extends StatefulWidget {
 }
 
 class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
+  late final TextEditingController controller;
   bool saving = false;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TextEditingController(text: widget.content);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
 
   Future<void> _save() async {
     setState(() {
@@ -210,7 +222,7 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
       error = null;
     });
     try {
-      await widget.onSave();
+      await widget.onSave(controller.text);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -249,7 +261,7 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
               const SizedBox(height: 12),
               Expanded(
                 child: TextField(
-                  controller: widget.controller,
+                  controller: controller,
                   expands: true,
                   maxLines: null,
                   minLines: null,

@@ -131,6 +131,16 @@ def cached_file(job_id: str, index: int) -> Path:
     raise FileNotFoundError(job_id)
 
 
+def read_cached_lyric(job_id: str, index: int) -> tuple[str, str, bytes]:
+    """Read metadata and content before cache eviction can remove the file."""
+    with _LOCK:
+        for record in _load_records():
+            if record.get("job_id") == job_id and _valid_record(record):
+                source = cached_file(job_id, index)
+                return record["work_id"], record["files"][index]["track_path"], source.read_bytes()
+    raise FileNotFoundError(job_id)
+
+
 def _load_records() -> list[dict[str, Any]]:
     try:
         raw = json.loads(INDEX_PATH.read_text(encoding="utf-8"))

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from .models import OutputSettings
+from .kikoeta_cache import read_cached_lyric
 
 
 _WORK_ID = re.compile(r"(?:RJ|VJ|BJ)[0-9]+", re.IGNORECASE)
@@ -55,6 +56,35 @@ def _authorization(output: OutputSettings) -> str:
     return f"Bearer {output.lls_key}"
 
 
+def _upload_lyric(endpoint: str, authorization: str, work_id: str,
+                  relative_path: str, content: bytes) -> None:
+    if not content or len(content) > _MAX_FILE_BYTES:
+        raise ValueError(f"歌词文件大小无效：{relative_path}")
+    payload = json.dumps({
+        "workId": work_id,
+        "files": [{"relativePath": relative_path, "content": base64.b64encode(content).decode("ascii")}],
+    }).encode("utf-8")
+    request = Request(endpoint, data=payload, headers={
+        "Content-Type": "application/json", "Authorization": authorization,
+    }, method="POST")
+    try:
+        with urlopen(request, timeout=60) as response:
+            response.read(4096)
+    except HTTPError as exc:
+        raise RuntimeError(f"Kikoeta-LLS 上传失败（HTTP {exc.code}）") from exc
+
+
+def sync_cached_lyric(job_id: str, index: int, output: OutputSettings) -> None:
+    """Explicit uploads do not depend on the automatic sync switch."""
+    endpoint = _endpoint(output.lls_url)
+    authorization = _authorization(output)
+    work_id, track_path, content = read_cached_lyric(job_id, index)
+    work_id = work_id.strip().upper()
+    if not _WORK_ID.fullmatch(work_id):
+        raise ValueError("缓存缺少有效的 RJ/VJ/BJ 作品号，无法推送到 LLS")
+    _upload_lyric(endpoint, authorization, work_id, lyric_path(track_path, ".lrc"), content)
+
+
 def sync_completed_job(job: Any, output: OutputSettings) -> int:
     if not output.lls_sync or job.source != "kikoeta" or job.status != "completed":
         return 0
@@ -80,19 +110,6 @@ def sync_completed_job(job: Any, output: OutputSettings) -> int:
                 relative_path = relative_path[: -len(extension)] + f"-{len(used_paths)}{extension}"
             used_paths.add(relative_path)
             content = source.read_bytes()
-            if not content or len(content) > _MAX_FILE_BYTES:
-                raise ValueError(f"歌词文件大小无效：{source.name}")
-            payload = json.dumps({
-                "workId": work_id,
-                "files": [{"relativePath": relative_path, "content": base64.b64encode(content).decode("ascii")}],
-            }).encode("utf-8")
-            request = Request(endpoint, data=payload, headers={
-                "Content-Type": "application/json", "Authorization": authorization,
-            }, method="POST")
-            try:
-                with urlopen(request, timeout=60) as response:
-                    response.read(4096)
-            except HTTPError as exc:
-                raise RuntimeError(f"Kikoeta-LLS 上传失败（HTTP {exc.code}）") from exc
+            _upload_lyric(endpoint, authorization, work_id, relative_path, content)
             uploaded += 1
     return uploaded

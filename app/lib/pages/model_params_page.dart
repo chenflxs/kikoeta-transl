@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../settings_draft.dart';
 import '../widgets.dart';
 
 class ModelParamsPage extends StatefulWidget {
@@ -69,43 +70,53 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
 
   void _syncSettings() {
     if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
-    if (_draft() != _savedDraft) {
-      settingsSynced = true;
-      return;
-    }
     final settings = widget.app.settings;
     final correct = (settings['correct'] as Map?) ?? {};
     final translate = (settings['translate'] as Map?) ?? {};
+    final merged = mergeLoadedSettingsDraft(_savedDraft, _draftValues(), {
+      'correctPrompt': '${correct['prompt'] ?? ''}',
+      'correctTemperature': _text(correct['temperature'], '0.2'),
+      'correctMaxTokens': _text(correct['max_tokens'], '4096'),
+      'correctThinking': _boolValue(correct['enable_thinking'], false),
+      'translatePrompt': '${translate['prompt'] ?? ''}',
+      'contextNum': _text(translate['context_num'], '10'),
+      'batchSize': _text(translate['batch_size'], '10'),
+      'tokenLimit': _text(translate['token_limit'], '1024'),
+      'translateThinking': _boolValue(translate['enable_thinking'], true),
+      'promptMode': '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
+          ? 'overwrite'
+          : 'append',
+    });
     settingsSynced = true;
     setState(() {
-      correctPrompt.text = '${correct['prompt'] ?? ''}';
-      correctTemperature.text = _text(correct['temperature'], '0.2');
-      correctMaxTokens.text = _text(correct['max_tokens'], '4096');
-      correctThinkingEnabled = _boolValue(correct['enable_thinking'], false);
-      translatePrompt.text = '${translate['prompt'] ?? ''}';
-      contextNum.text = _text(translate['context_num'], '10');
-      batchSize.text = _text(translate['batch_size'], '10');
-      tokenLimit.text = _text(translate['token_limit'], '1024');
-      translateThinkingEnabled = _boolValue(translate['enable_thinking'], true);
-      promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
-          ? 'overwrite'
-          : 'append';
+      correctPrompt.text = merged.values['correctPrompt'] as String;
+      correctTemperature.text = merged.values['correctTemperature'] as String;
+      correctMaxTokens.text = merged.values['correctMaxTokens'] as String;
+      correctThinkingEnabled = merged.values['correctThinking'] as bool;
+      translatePrompt.text = merged.values['translatePrompt'] as String;
+      contextNum.text = merged.values['contextNum'] as String;
+      batchSize.text = merged.values['batchSize'] as String;
+      tokenLimit.text = merged.values['tokenLimit'] as String;
+      translateThinkingEnabled = merged.values['translateThinking'] as bool;
+      promptMode = merged.values['promptMode'] as String;
     });
-    _savedDraft = _draft();
+    _savedDraft = merged.baseline;
   }
 
-  String _draft() => jsonEncode([
-    correctPrompt.text,
-    correctTemperature.text,
-    correctMaxTokens.text,
-    correctThinkingEnabled,
-    translatePrompt.text,
-    contextNum.text,
-    batchSize.text,
-    tokenLimit.text,
-    translateThinkingEnabled,
-    promptMode,
-  ]);
+  Map<String, dynamic> _draftValues() => {
+    'correctPrompt': correctPrompt.text,
+    'correctTemperature': correctTemperature.text,
+    'correctMaxTokens': correctMaxTokens.text,
+    'correctThinking': correctThinkingEnabled,
+    'translatePrompt': translatePrompt.text,
+    'contextNum': contextNum.text,
+    'batchSize': batchSize.text,
+    'tokenLimit': tokenLimit.text,
+    'translateThinking': translateThinkingEnabled,
+    'promptMode': promptMode,
+  };
+
+  String _draft() => jsonEncode(_draftValues());
 
   @override
   void dispose() {

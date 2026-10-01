@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 from kt.jobs import Job, JobManager
 from kt.kikoeta_cache import cached_file, list_cached_results
+from kt.lls_sync import sync_cached_lyric
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
@@ -87,6 +88,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             self._json(load_settings().to_dict())
             return
+        if path == "/api/lls/cache":
+            self._json({"entries": list_cached_results()})
+            return
         if path == "/api/tools":
             try:
                 self._json(_tools())
@@ -135,6 +139,22 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         if not self._allow_request(path):
+            return
+        if path.startswith("/api/lls/cache/"):
+            parts = path.split("/")
+            if len(parts) != 7 or parts[5] != "files":
+                self._error(404, "not found")
+                return
+            try:
+                sync_cached_lyric(unquote(parts[4]), int(parts[6]), load_settings().output)
+            except FileNotFoundError:
+                self._error(404, "缓存已失效或文件不存在，请重新推送")
+            except ValueError as exc:
+                self._error(400, str(exc))
+            except (OSError, RuntimeError) as exc:
+                self._error(502, f"推送失败：{exc}")
+            else:
+                self._json({"uploaded": 1})
             return
         if path == "/api/shutdown":
             # The local engine is owned by the desktop client.  Never expose

@@ -138,6 +138,7 @@ class AppState extends ChangeNotifier {
       update(next);
       _settingsRevision++;
       settings = await engine.saveSettings(next);
+      _settingsRevision++;
       themeNotifier.value = _themeValue(settings['theme']);
       notifyListeners();
     });

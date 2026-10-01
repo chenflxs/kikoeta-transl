@@ -345,6 +345,30 @@ class EngineClient {
     return (payload['freed_bytes'] as num?)?.toInt() ?? 0;
   }
 
+  Future<List<Map<String, dynamic>>> llsCache() async {
+    final res = await http
+        .get(_uri('/api/lls/cache'))
+        .timeout(const Duration(seconds: 8));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '加载歌词缓存失败');
+    }
+    return [
+      for (final item in payload['entries'] as List)
+        Map<String, dynamic>.from(item as Map),
+    ];
+  }
+
+  Future<void> pushLlsCachedFile(String jobId, int index) async {
+    final res = await http
+        .post(_uri('/api/lls/cache/${Uri.encodeComponent(jobId)}/files/$index'))
+        .timeout(const Duration(seconds: 75));
+    final payload = _decode(res);
+    if (res.statusCode != 200 || payload['uploaded'] != 1) {
+      throw StateError(payload['error']?.toString() ?? '推送歌词缓存失败');
+    }
+  }
+
   Future<Map<String, dynamic>> events(String id, int after) async {
     final client = http.Client();
     _eventsClient = client;

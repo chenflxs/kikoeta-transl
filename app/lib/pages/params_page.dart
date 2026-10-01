@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../settings_draft.dart';
 import '../widgets.dart';
 
 class ParamsPage extends StatefulWidget {
@@ -18,6 +19,7 @@ class _ParamsPageState extends State<ParamsPage> {
   late bool enableVad, splitOnPunct, forceAligner, splitOnWord;
   late bool noFallback, noPunctuation, noGpu, flashAttn;
   bool _syncing = false;
+  bool _templateEdited = false;
   bool _settingsSynced = false;
   late String _savedDraft;
   late final VoidCallback _unregisterPageSaver;
@@ -95,32 +97,53 @@ class _ParamsPageState extends State<ParamsPage> {
     flashAttn = asr['flash_attn'] != false;
   }
 
-  String _draft() => jsonEncode([
-    for (final entry in _fields.entries) [entry.key, entry.value.text],
-    enableVad,
-    splitOnPunct,
-    forceAligner,
-    splitOnWord,
-    noFallback,
-    noPunctuation,
-    noGpu,
-    flashAttn,
-  ]);
+  Map<String, dynamic> _draftValues() => {
+    for (final entry in _fields.entries) entry.key: entry.value.text,
+    'enable_vad': enableVad,
+    'split_on_punct': splitOnPunct,
+    'force_aligner': forceAligner,
+    'split_on_word': splitOnWord,
+    'no_fallback': noFallback,
+    'no_punctuation': noPunctuation,
+    'no_gpu': noGpu,
+    'flash_attn': flashAttn,
+  };
+
+  String _draft() => jsonEncode(_draftValues());
 
   void _syncSettings() {
     if (!mounted || _settingsSynced || widget.app.settings.isEmpty) return;
     _settingsSynced = true;
-    if (_draft() != _savedDraft) return;
     final asr = (widget.app.settings['asr'] as Map?) ?? {};
-    _syncing = true;
-    for (final entry in _values(asr).entries) {
-      _fields[entry.key]!.text = entry.value;
+    final regenerate = !_templateEdited && _draft() != _savedDraft;
+    final loaded = <String, dynamic>{
+      ..._values(asr),
+      'template': '${asr['extra_args'] ?? ''}'.trim(),
+      'enable_vad': asr['enable_vad'] != false,
+      'split_on_punct': asr['split_on_punct'] != false,
+      'force_aligner': asr['force_aligner'] != false,
+      'split_on_word': asr['split_on_word'] == true,
+      'no_fallback': asr['no_fallback'] == true,
+      'no_punctuation': asr['no_punctuation'] == true,
+      'no_gpu': asr['no_gpu'] == true,
+      'flash_attn': asr['flash_attn'] != false,
+    };
+    if (loaded['template'] == '') {
+      loaded['template'] = _generatedTemplate(loaded);
     }
-    template.text = '${asr['extra_args'] ?? ''}'.trim();
-    _loadFlags(asr);
+    final merged = mergeLoadedSettingsDraft(
+      _savedDraft,
+      _draftValues(),
+      loaded,
+    );
+    _syncing = true;
+    for (final entry in _fields.entries) {
+      entry.value.text = merged.values[entry.key] as String;
+    }
+    _loadFlags(merged.values);
     _syncing = false;
-    if (template.text.isEmpty) _setGeneratedTemplate();
-    _savedDraft = _draft();
+    if (regenerate) _setGeneratedTemplate();
+    _savedDraft = merged.baseline;
     setState(() {});
   }
 
@@ -128,7 +151,9 @@ class _ParamsPageState extends State<ParamsPage> {
   void dispose() {
     _unregisterPageSaver();
     widget.app.removeListener(_syncSettings);
-    for (final controller in _fields.values) controller.dispose();
+    for (final controller in _fields.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -144,23 +169,31 @@ class _ParamsPageState extends State<ParamsPage> {
   }
 
   void _onTemplateChanged() {
-    if (!_syncing && mounted) setState(() {});
+    if (!_syncing && mounted) {
+      _templateEdited = true;
+      setState(() {});
+    }
   }
 
   void _setGeneratedTemplate() {
     _syncing = true;
     template.text = _generatedTemplate();
     _syncing = false;
+    _templateEdited = false;
   }
 
-  String _generatedTemplate() {
+  String _generatedTemplate([Map<String, dynamic>? values]) {
+    final draft = values ?? _draftValues();
+    String value(String name) => (draft[name] as String).trim();
+    String quote(String text) =>
+        RegExp(r'\s').hasMatch(text) ? '"$text"' : text;
     final args = <String>[
       r'$crispasr_executable',
       '--backend',
       r'$backend',
       '--model',
       r'$model_file',
-      if (forceAligner) ...[
+      if (draft['force_aligner'] as bool) ...[
         '--aligner-model',
         r'$aligner_file',
         '--force-aligner',
@@ -172,29 +205,52 @@ class _ParamsPageState extends State<ParamsPage> {
       r'$output_file',
       '--file',
       r'$input_file',
-      if (enableVad) ...[
+      if (draft['enable_vad'] as bool) ...[
         '--vad',
         '--vad-model',
-        field('vad_model').text.trim(),
+        quote(value('vad_model')),
         '--vad-threshold',
-        field('vad_threshold').text.trim(),
+        value('vad_threshold'),
         '--vad-max-speech-duration-s',
-        field('vad_max_speech').text.trim(),
+        value('vad_max_speech'),
         '--vad-min-silence-duration-ms',
-        field('vad_min_silence').text.trim(),
+        value('vad_min_silence'),
       ],
       '--max-new-tokens',
-      field('max_new_tokens').text.trim(),
+      value('max_new_tokens'),
       '--frequency-penalty',
-      field('frequency_penalty').text.trim(),
+      value('frequency_penalty'),
       '--temperature',
-      field('temperature').text.trim(),
-      if (_int('flush_after', 1) > 0) ...[
-        '--flush-after',
-        field('flush_after').text.trim(),
-      ],
-      if (splitOnPunct) '--split-on-punct',
+      value('temperature'),
+      '--flush-after',
+      value('flush_after'),
+      if (draft['split_on_punct'] as bool) '--split-on-punct',
+      if (draft['split_on_word'] as bool) '--split-on-word',
+      if (draft['no_fallback'] as bool) '--no-fallback',
+      if (draft['no_punctuation'] as bool) '--no-punctuation',
+      if (draft['no_gpu'] as bool) '--no-gpu',
+      if (!(draft['flash_attn'] as bool)) '--no-flash-attn',
     ];
+    final defaults = _values({});
+    // Keep the default command small, but include every customized parameter.
+    for (final name in defaults.keys) {
+      if (const {
+        'vad_model',
+        'vad_threshold',
+        'vad_max_speech',
+        'vad_min_silence',
+        'max_new_tokens',
+        'frequency_penalty',
+        'temperature',
+        'flush_after',
+      }.contains(name)) {
+        continue;
+      }
+      final text = value(name);
+      if (text.isNotEmpty && text != defaults[name]) {
+        args.addAll(['--${name.replaceAll('_', '-')}', quote(text)]);
+      }
+    }
     return args.join(' ');
   }
 
@@ -213,19 +269,22 @@ class _ParamsPageState extends State<ParamsPage> {
   String _unquote(String value) {
     if (value.length >= 2 &&
         ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))))
+            (value.startsWith("'") && value.endsWith("'")))) {
       return value.substring(1, value.length - 1);
+    }
     return value;
   }
 
   String? _option(List<String> tokens, List<String> names) {
     for (var index = 0; index < tokens.length; index++) {
       for (final name in names) {
-        if (tokens[index] == name && index + 1 < tokens.length)
+        if (tokens[index] == name && index + 1 < tokens.length) {
           return tokens[index + 1];
+        }
         if (tokens[index].startsWith('$name=') &&
-            tokens[index].length > name.length + 1)
+            tokens[index].length > name.length + 1) {
           return tokens[index].substring(name.length + 1);
+        }
       }
     }
     return null;
@@ -274,7 +333,9 @@ class _ParamsPageState extends State<ParamsPage> {
       'device': _option(tokens, ['--device', '-dev']) ?? '0',
       'gpu_backend': _option(tokens, ['--gpu-backend']) ?? 'auto',
     };
-    for (final entry in values.entries) field(entry.key).text = entry.value;
+    for (final entry in values.entries) {
+      field(entry.key).text = entry.value;
+    }
     enableVad = _has(tokens, ['--vad']);
     forceAligner = _has(tokens, ['--force-aligner', '-falign']);
     splitOnPunct = _has(tokens, ['--split-on-punct', '-sp']);
@@ -330,7 +391,9 @@ class _ParamsPageState extends State<ParamsPage> {
       'device': '0',
       'gpu_backend': 'auto',
     };
-    for (final entry in defaults.entries) field(entry.key).text = entry.value;
+    for (final entry in defaults.entries) {
+      field(entry.key).text = entry.value;
+    }
     _syncing = false;
     _setGeneratedTemplate();
     setState(() {});
@@ -338,7 +401,7 @@ class _ParamsPageState extends State<ParamsPage> {
 
   Future<void> _save({bool auto = false}) async {
     if (auto && _draft() == _savedDraft) return;
-    _parseTemplateIntoFields();
+    if (_templateEdited) _parseTemplateIntoFields();
     final draft = _draft();
     final asrValues = <String, dynamic>{
       'enable_vad': enableVad,
@@ -393,10 +456,11 @@ class _ParamsPageState extends State<ParamsPage> {
       next['asr'] = {...(next['asr'] as Map? ?? {}), ...asrValues};
     });
     _savedDraft = draft;
-    if (!auto && mounted)
+    if (!auto && mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('听写参数已保存')));
+    }
   }
 
   Widget _field(String name, String label, {String? hint}) =>
@@ -442,7 +506,7 @@ class _ParamsPageState extends State<ParamsPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
               child: Text(
-                '保存时会从模板解析可编辑参数；未知参数会保留在模板中。',
+                '手动编辑模板后保存会解析可编辑参数；未知参数会保留在模板中。',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ),

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_state.dart';
+import '../settings_draft.dart';
 import '../widgets.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -54,27 +55,36 @@ class _SettingsPageState extends State<SettingsPage> {
     widget.app.addListener(_syncSettings);
   }
 
-  String _draft() => jsonEncode([
-    ffmpeg.text,
-    crispasr.text,
-    proxy.text,
-    remoteUsername.text,
-    remotePassword.text,
-    remoteAccess,
-  ]);
+  Map<String, dynamic> _draftValues() => {
+    'ffmpeg_path': ffmpeg.text,
+    'crispasr_dir': crispasr.text,
+    'proxy': proxy.text,
+    'remote_username': remoteUsername.text,
+    'remote_password': remotePassword.text,
+    'remote_access': remoteAccess,
+  };
+
+  String _draft() => jsonEncode(_draftValues());
 
   void _syncSettings() {
     if (!mounted || _settingsSynced || widget.app.settings.isEmpty) return;
     _settingsSynced = true;
-    if (_draft() != _savedDraft) return;
     final settings = widget.app.settings;
-    ffmpeg.text = '${settings['ffmpeg_path'] ?? ''}';
-    crispasr.text = '${settings['crispasr_dir'] ?? ''}';
-    proxy.text = '${settings['proxy'] ?? ''}';
-    remoteUsername.text = '${settings['remote_username'] ?? 'admin'}';
-    remotePassword.text = '${settings['remote_password'] ?? 'kikoeta'}';
-    setState(() => remoteAccess = settings['remote_access'] == true);
-    _savedDraft = _draft();
+    final merged = mergeLoadedSettingsDraft(_savedDraft, _draftValues(), {
+      'ffmpeg_path': '${settings['ffmpeg_path'] ?? ''}',
+      'crispasr_dir': '${settings['crispasr_dir'] ?? ''}',
+      'proxy': '${settings['proxy'] ?? ''}',
+      'remote_username': '${settings['remote_username'] ?? 'admin'}',
+      'remote_password': '${settings['remote_password'] ?? 'kikoeta'}',
+      'remote_access': settings['remote_access'] == true,
+    });
+    ffmpeg.text = merged.values['ffmpeg_path'] as String;
+    crispasr.text = merged.values['crispasr_dir'] as String;
+    proxy.text = merged.values['proxy'] as String;
+    remoteUsername.text = merged.values['remote_username'] as String;
+    remotePassword.text = merged.values['remote_password'] as String;
+    setState(() => remoteAccess = merged.values['remote_access'] as bool);
+    _savedDraft = merged.baseline;
   }
 
   @override

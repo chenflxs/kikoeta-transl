@@ -1,6 +1,6 @@
 # Kikoeta Transl
 
-![Kikoeta Transl logo](logo/logo.png)
+<img src="logo/logo.png" alt="Kikoeta Transl logo" width="128">
 
 Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间轴的歌词 / 字幕，并导出给 [kikoeta](https://github.com/chenflxs/kikoeta) 使用。当然也可作为独立翻译器使用，但是我更推荐你使用[VoiceTransl](https://github.com/shinnpuru/VoiceTransl)
 

@@ -54,16 +54,23 @@ Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间
 
 | 可用显存 | 推荐模型 | 建议量化 / 说明 |
 | --- | --- | --- |
-| 4–6 GB | **首选：[GalTransl-v4-4B-2601](https://huggingface.co/SakuraLLM/GalTransl-v4-4B-2601)**<br>备选：[Sakura-1.5B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-1.5B-Qwen2.5-v1.0-GGUF) | GalTransl 4B：4 GB 选择 Q5_K_S，6 GB 选择 Q6_K。<br>Sakura 1.5B：选择 Q4。 |
-| 8–10 GB | **首选：[Sakura-GalTransl-7B-v3.7](https://huggingface.co/SakuraLLM/Sakura-GalTransl-7B-v3.7)**<br>备选：[Sakura-7B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-7B-Qwen2.5-v1.0-GGUF) | GalTransl 7B：选择 IQ4_XS / Q4_K。<br>Sakura 7B：选择 IQ4_XS / Q4。 |
-| 12–16 GB | **首选：[Sakura-GalTransl-14B-v3.8](https://huggingface.co/SakuraLLM/Sakura-GalTransl-14B-v3.8)**<br>备选：[Sakura-14B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-14B-Qwen2.5-v1.0-GGUF) | GalTransl 14B：选择 IQ4_XS / Q5_K_S。<br>Sakura 14B：选择 IQ4_XS / Q4。 |
-| 24 GB 以上 | [Sakura-32B-Qwen2beta-v0.9-GGUF](https://huggingface.co/SakuraLLM/Sakura-32B-Qwen2beta-v0.9-GGUF) | Q4；建议保留额外显存给上下文。若更重视稳定速度，可改用 14B 的 Q6_K。 |
+| 4–6 GB | **首选：[Index-Translate-2B](https://huggingface.co/IndexTeam/Index-Translate-2B-GGUF)**<br>其他选择：[GalTransl-v4-4B-2601](https://huggingface.co/SakuraLLM/GalTransl-v4-4B-2601)、[Sakura-1.5B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-1.5B-Qwen2.5-v1.0-GGUF) | Index-Translate 2B：选择 Q4_K_M（约 1.3 GB）。<br>GalTransl 4B：4 GB 选择 Q5_K_S，6 GB 选择 Q6_K。<br>Sakura 1.5B：选择 Q4。 |
+| 8–10 GB | **首选：[Index-Translate-9B](https://huggingface.co/IndexTeam/Index-Translate-9B-GGUF)**<br>其他选择：[Sakura-GalTransl-7B-v3.7](https://huggingface.co/SakuraLLM/Sakura-GalTransl-7B-v3.7)、[Sakura-7B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-7B-Qwen2.5-v1.0-GGUF) | Index-Translate 9B：选择 Q4_K_M（约 5.8 GB）。<br>GalTransl 7B：选择 IQ4_XS / Q4_K。<br>Sakura 7B：选择 IQ4_XS / Q4。 |
+| 12–16 GB | **首选：[Index-Translate-9B](https://huggingface.co/IndexTeam/Index-Translate-9B-GGUF)**<br>其他选择：[Sakura-GalTransl-14B-v3.8](https://huggingface.co/SakuraLLM/Sakura-GalTransl-14B-v3.8)、[Sakura-14B-Qwen2.5-v1.0-GGUF](https://huggingface.co/SakuraLLM/Sakura-14B-Qwen2.5-v1.0-GGUF) | Index-Translate 9B：优先 Q8_0（约 9.8 GB），可用显存不足或需要更长上下文时选择 Q6_K（约 7.6 GB）。<br>GalTransl 14B：选择 IQ4_XS / Q5_K_S。<br>Sakura 14B：选择 IQ4_XS / Q4。 |
+| 24 GB 以上 | **首选：[Index-Translate-35B-A3B（预览）](https://huggingface.co/IndexTeam/Index-Translate-35B-A3B-preview-GGUF)**<br>其他选择：[Sakura-32B-Qwen2beta-v0.9-GGUF](https://huggingface.co/SakuraLLM/Sakura-32B-Qwen2beta-v0.9-GGUF) | Index-Translate：推荐 Q4_K_M（约 21.7 GB）；24 GB 显存需控制上下文长度并为运行开销留空间，显存不足时可选 IQ4_XS（约 19.4 GB）。<br>Sakura：选择 Q4；建议保留额外显存给上下文。若更重视稳定速度，可改用 14B 的 Q6_K。 |
 
 SakuraLLM 声明其模型采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans) 且禁止商用，下载和使用前请同时阅读对应模型页的说明。
 
 ### 在线翻译模型
 
-在线服务只需在“模型”页填写服务商提供的 OpenAI 兼容地址、模型名和 API Key。个人推荐优先尝试 `ds-v4-pro` 与 `kimi-k2.5`。(这只是个人使用偏好，并不保证是最适合或最好的模型；如果发现更适合字幕翻译的模型，欢迎[提交 Issue](https://github.com/chenflxs/kikoeta-transl/issues/new)分享)。
+在线服务只需在“模型”页填写服务商提供的 OpenAI 兼容地址、模型名和 API Key。以下为个人推荐，实际效果和可用性以服务商为准：
+
+| 服务 | 模型 | 说明 |
+| --- | --- | --- |
+| Index-Translate<br>**开源领域断层领先** | [`Index-Translate-35B-A3B`](https://github.com/bilibili/Index-Translate) | 通过[官方py脚本](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py)使用 `python call_api.py --serve` 搭建中转服务器后连接到KT。*直连会被拦截返回 `412`*  |
+| 其他在线服务 | `DeepSeek-V4-Pro`、`Kimi-K2.6` | 按服务商提供的兼容地址、模型名和 API Key 配置。|
+
+模型推荐只是个人使用偏好，并不保证最适合所有字幕翻译场景。如果发现更适合的模型，欢迎[提交 Issue](https://github.com/chenflxs/kikoeta-transl/issues/new)分享。
 
 ## 与 GalTransl 的关系
 

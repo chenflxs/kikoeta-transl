@@ -540,7 +540,7 @@ class _ModelsPageState extends State<ModelsPage> {
                 ),
               ],
             ),
-            const SectionTitle('小模型矫正'),
+            const SectionTitle('矫正'),
             KtGroup(
               children: [
                 KtSelectField<String>(

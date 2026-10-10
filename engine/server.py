@@ -177,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
                 request = JobRequest(
                     files=files,
                     flags=StageFlags(
-                        enable_correct=bool(flags_raw.get("enable_correct", False)),
+                        enable_correct=True,
                         enable_translate=bool(flags_raw.get("enable_translate", True)),
                     ),
                     settings_override=payload.get("settings") or {},
@@ -206,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
             request = JobRequest(
                 files=list(payload.get("files") or []),
                 flags=StageFlags(
-                    enable_correct=bool(flags_raw.get("enable_correct", False)),
+                    enable_correct=bool(flags_raw.get("enable_correct", True)),
                     enable_translate=bool(flags_raw.get("enable_translate", True)),
                 ),
                 settings_override=payload.get("settings") or {},

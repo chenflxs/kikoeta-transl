@@ -107,7 +107,7 @@ flutter run -d windows
 ```powershell
 cd engine
 python -m kt run C:\media\song.srt --no-translate
-python -m kt run C:\media\song.mkv --correct
+python -m kt run C:\media\song.mkv --no-correct
 ```
 
 </details>

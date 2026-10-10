@@ -21,7 +21,7 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic> settings = {};
   Map<String, dynamic> tools = {};
   final List<String> files = [];
-  bool enableCorrect = false;
+  bool enableCorrect = true;
   bool enableTranslate = true;
   String? jobId;
   String jobStatus = '';
@@ -68,7 +68,7 @@ class AppState extends ChangeNotifier {
       engineMessage = '工具检测失败：$e';
     }
     final flags = (settings['flags'] as Map?) ?? {};
-    enableCorrect = flags['enable_correct'] == true;
+    enableCorrect = flags['enable_correct'] != false;
     enableTranslate = flags['enable_translate'] != false;
     notifyListeners();
   }

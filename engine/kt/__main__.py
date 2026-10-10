@@ -27,7 +27,10 @@ def main() -> None:
     serve.add_argument("--port", type=int, default=18765)
     run = sub.add_parser("run", help="处理本地文件")
     run.add_argument("files", nargs="+")
-    run.add_argument("--correct", action="store_true")
+    correction = run.add_mutually_exclusive_group()
+    correction.add_argument("--correct", dest="enable_correct", action="store_true")
+    correction.add_argument("--no-correct", dest="enable_correct", action="store_false")
+    run.set_defaults(enable_correct=True)
     run.add_argument("--no-translate", action="store_true")
     run.add_argument(
         "--disable-thinking",
@@ -50,7 +53,7 @@ def main() -> None:
             translate=replace(settings.translate, enable_thinking=False),
         )
     flags = StageFlags(
-        enable_correct=args.correct,
+        enable_correct=args.enable_correct,
         enable_translate=not args.no_translate,
     )
     job_dir = WORK_DIR / "cli"

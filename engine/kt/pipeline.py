@@ -85,7 +85,7 @@ def process_file(
 
         if needs_correct:
             _raise_if_stopped(stop_event)
-            emit("status", file=path, stage="correcting", message="小模型矫正")
+            emit("status", file=path, stage="correcting", message="矫正")
             result.stage = "correcting"
             from .stages.correct import correct_cues
             correction_review = CorrectionReview(source_file=path)

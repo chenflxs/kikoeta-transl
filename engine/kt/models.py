@@ -66,7 +66,7 @@ def cues_from_gt_json(items: list[dict[str, Any]], fallback: list[Cue]) -> list[
 
 @dataclass
 class StageFlags:
-    enable_correct: bool = False
+    enable_correct: bool = True
     enable_translate: bool = True
 
 
@@ -279,7 +279,7 @@ class AppSettings:
             source_lang=str(raw.get("source_lang") or "ja"),
             target_lang=str(raw.get("target_lang") or "zh-cn"),
             flags=StageFlags(
-                enable_correct=bool(flags.get("enable_correct", False)),
+                enable_correct=bool(flags.get("enable_correct", True)),
                 enable_translate=bool(flags.get("enable_translate", True)),
             ),
             asr=_asr_from_dict(asr, str(raw.get("source_lang") or "ja")),

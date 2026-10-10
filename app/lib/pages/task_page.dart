@@ -121,7 +121,7 @@ class _TaskPageState extends State<TaskPage> {
                 ),
                 KtSwitchRow(
                   icon: Icons.auto_fix_high,
-                  title: '小模型矫正',
+                  title: '矫正',
                   sub: '只修听写，不翻译',
                   value: app.enableCorrect,
                   onChanged: (v) {

@@ -62,7 +62,7 @@ def main() -> None:
     stage.pack(fill="x", pady=(0, 12))
     rows = [
         ("转码 + ASR", "音频 / 视频必做；字幕输入自动跳过", "固定"),
-        ("小模型矫正", "只修听写，不翻译", "关"),
+        ("矫正", "只修听写，不翻译", "开"),
         ("gt 翻译", "进程内调用 GalTransl", "开"),
     ]
     for i, (title, sub, state) in enumerate(rows):

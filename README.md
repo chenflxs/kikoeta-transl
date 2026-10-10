@@ -67,7 +67,7 @@ SakuraLLM 声明其模型采用 [CC BY-NC-SA 4.0](https://creativecommons.org/li
 
 | 服务 | 模型 | 说明 |
 | --- | --- | --- |
-| Index-Translate<br>**开源领域断层领先** | [`Index-Translate-35B-A3B`](https://github.com/bilibili/Index-Translate) | 通过[官方py脚本](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py)使用 `python call_api.py --serve` 搭建中转服务器后连接到KT。*直连会被拦截返回 `412`*  |
+| Index-Translate<br>**开源领域断层领先** | [`Index-Translate-35B-A3B`](https://github.com/bilibili/Index-Translate) | 在“模型”页启用“Index-Translate 兼容模式”，填写官方 API 地址和模型名即可直连；无需运行 Python 脚本或搭建中转服务器。 |
 | 其他在线服务 | `DeepSeek-V4-Pro`、`Kimi-K2.6` | 按服务商提供的兼容地址、模型名和 API Key 配置。|
 
 模型推荐只是个人使用偏好，并不保证最适合所有字幕翻译场景。如果发现更适合的模型，欢迎[提交 Issue](https://github.com/chenflxs/kikoeta-transl/issues/new)分享。

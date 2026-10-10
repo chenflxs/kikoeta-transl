@@ -345,6 +345,27 @@ class EngineClient {
     return (payload['freed_bytes'] as num?)?.toInt() ?? 0;
   }
 
+  Future<void> deleteRecentJob(String jobId) async {
+    final res = await http
+        .delete(_uri('/api/recent/${Uri.encodeComponent(jobId)}'))
+        .timeout(const Duration(seconds: 30));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '删除最近记录失败');
+    }
+  }
+
+  Future<int> deleteAllRecentJobs() async {
+    final res = await http
+        .delete(_uri('/api/recent'))
+        .timeout(const Duration(seconds: 60));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '删除最近记录失败');
+    }
+    return (payload['deleted_count'] as num?)?.toInt() ?? 0;
+  }
+
   Future<List<Map<String, dynamic>>> llsCache() async {
     final res = await http
         .get(_uri('/api/lls/cache'))

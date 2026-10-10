@@ -22,7 +22,12 @@ from kt.lls_sync import sync_cached_lyric
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
-from kt.recent import delete_translation_cache, list_recent_jobs
+from kt.recent import (
+    delete_all_recent_jobs,
+    delete_recent_job,
+    delete_translation_cache,
+    list_recent_jobs,
+)
 from kt.settings import load_settings, save_settings
 from kt.stages.correct import test_correct
 from kt.llama_runtime import LLAMA_RUNTIME
@@ -307,11 +312,40 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allow_request(path):
             return
         parts = path.split("/")
-        if len(parts) != 5 or parts[1:3] != ["api", "recent"] or parts[4] != "cache":
+        if parts[1:3] != ["api", "recent"]:
             self._error(404, "not found")
             return
         if self.client_address[0] not in {"127.0.0.1", "::1"}:
             self._error(403, "recent jobs are only available from localhost")
+            return
+        if len(parts) == 3:
+            active = {job.job_id for job in MANAGER.list()
+                      if job.status in {"queued", "running"}}
+            try:
+                deleted = delete_all_recent_jobs(active)
+            except OSError as exc:
+                self._error(500, f"删除最近记录失败：{exc}")
+                return
+            self._json({"ok": True, "deleted_count": deleted})
+            return
+        if len(parts) == 4:
+            job_id = parts[3]
+            job = MANAGER.get(job_id)
+            if job is not None and job.status in {"queued", "running"}:
+                self._error(409, "任务仍在运行，不能删除记录")
+                return
+            try:
+                delete_recent_job(job_id)
+            except (ValueError, FileNotFoundError):
+                self._error(404, "recent job not found")
+                return
+            except OSError as exc:
+                self._error(500, f"删除记录失败：{exc}")
+                return
+            self._json({"ok": True})
+            return
+        if len(parts) != 5 or parts[4] != "cache":
+            self._error(404, "not found")
             return
         job_id = parts[3]
         job = MANAGER.get(job_id)

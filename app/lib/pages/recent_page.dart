@@ -116,6 +116,89 @@ class _RecentPageState extends State<RecentPage> {
     }
   }
 
+  Future<void> _deleteEntry(Map<String, dynamic> entry) async {
+    final id = entry['job_id']?.toString() ?? '';
+    if (id.isEmpty || _deleting != null) return;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除这条最近记录？'),
+        content: const Text(
+          '将删除此任务的工作文件和缓存，并从最近列表移除记录。已导出的成果文件会保留。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除记录'),
+          ),
+        ],
+      ),
+    );
+    if (approved != true || !mounted) return;
+    setState(() => _deleting = id);
+    try {
+      await widget.app.engine.deleteRecentJob(id);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('记录已删除，成果文件已保留')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+    } finally {
+      if (mounted) setState(() => _deleting = null);
+    }
+  }
+
+  Future<void> _deleteAllEntries() async {
+    if (_entries.isEmpty || _deleting != null) return;
+    final count = _entries.length;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除全部最近记录？'),
+        content: Text(
+          '将删除当前 $count 条记录对应的工作文件和缓存。已导出的成果文件会保留。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('全部删除'),
+          ),
+        ],
+      ),
+    );
+    if (approved != true || !mounted) return;
+    setState(() => _deleting = '*');
+    try {
+      final deleted = await widget.app.engine.deleteAllRecentJobs();
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 $deleted 条记录，成果文件已保留')),
+      );
+    } catch (error) {
+      if (mounted) await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+    } finally {
+      if (mounted) setState(() => _deleting = null);
+    }
+  }
+
   String _size(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -147,6 +230,13 @@ class _RecentPageState extends State<RecentPage> {
                 '最近',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
+            ),
+            IconButton(
+              tooltip: '一键删除所有记录',
+              onPressed: _loading || _entries.isEmpty || _deleting != null
+                  ? null
+                  : _deleteAllEntries,
+              icon: const Icon(Icons.delete_sweep_outlined),
             ),
             IconButton(
               tooltip: '刷新',
@@ -223,6 +313,11 @@ class _RecentPageState extends State<RecentPage> {
                       : () => _deleteCache(entry),
                   icon: const Icon(Icons.delete_outline, size: 17),
                   label: Text(_deleting == id ? '清理中' : '删除缓存'),
+                ),
+                IconButton(
+                  tooltip: '删除记录（保留成果文件）',
+                  onPressed: _deleting != null ? null : () => _deleteEntry(entry),
+                  icon: const Icon(Icons.delete_forever_outlined),
                 ),
               ],
             ),

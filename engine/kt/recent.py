@@ -94,7 +94,11 @@ def delete_translation_cache(job_id: str) -> int:
     if not _JOB_ID.fullmatch(job_id):
         raise ValueError("invalid job id")
     folder = WORK_DIR / job_id
-    if not folder.is_dir() or folder.is_symlink() or folder.resolve().parent != WORK_DIR.resolve():
+    if (
+        not folder.is_dir()
+        or folder.is_symlink()
+        or folder.resolve().parent != WORK_DIR.resolve()
+    ):
         raise FileNotFoundError(job_id)
     caches = _cache_dirs(folder)
     if not caches and not (folder / _RECORD).is_file():
@@ -102,6 +106,68 @@ def delete_translation_cache(job_id: str) -> int:
     freed = sum(_directory_bytes(path) for path in caches)
     for path in caches:
         shutil.rmtree(path)
+    return freed
+
+
+def delete_recent_job(job_id: str) -> int:
+    """Delete a job's working files and recent index while keeping exported outputs."""
+    if not _JOB_ID.fullmatch(job_id):
+        raise ValueError("invalid job id")
+    folder = WORK_DIR / job_id
+    if not folder.is_dir() or folder.is_symlink() or folder.resolve().parent != WORK_DIR.resolve():
+        raise FileNotFoundError(job_id)
+
+    record_path = folder / _RECORD
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        record = None
+    outputs = record.get("outputs", []) if isinstance(record, dict) else []
+    root = folder.resolve()
+    preserved: set[Path] = set()
+    if isinstance(outputs, list):
+        for output in outputs:
+            if not isinstance(output, str) or not output:
+                continue
+            path = Path(output)
+            try:
+                resolved = path.resolve()
+                if resolved.is_relative_to(root) and resolved.is_file():
+                    preserved.add(resolved)
+            except (OSError, RuntimeError):
+                continue
+
+    freed = _clean_job_folder(folder, preserved)
+    return freed
+
+
+def delete_all_recent_jobs(active_ids: set[str] | None = None) -> int:
+    """Delete every inactive recent job while preserving recorded output files."""
+    entries = list_recent_jobs(active_ids)
+    for entry in entries:
+        delete_recent_job(entry["job_id"])
+    return len(entries)
+
+
+def _clean_job_folder(folder: Path, preserved: set[Path]) -> int:
+    """Remove all files below folder except explicitly recorded output files."""
+    freed = 0
+    for child in folder.iterdir():
+        if child.is_symlink():
+            freed += child.lstat().st_size
+            child.unlink()
+            continue
+        if child.is_dir():
+            freed += _clean_job_folder(child, preserved)
+            try:
+                child.rmdir()
+            except OSError:
+                pass
+            continue
+        if child.resolve() in preserved:
+            continue
+        freed += child.stat().st_size
+        child.unlink()
     return freed
 
 

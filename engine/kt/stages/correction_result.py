@@ -57,7 +57,7 @@ def parse_correction_response(
             decision.text = cue.message
             decision.reason = decision.reason or "模型无法仅凭文本确定原文，保留待回听"
         elif decision.text != cue.message:
-            if _protected_layout(decision.text) != _protected_layout(cue.message):
+            if not _layout_matches_with_noise_cleanup(cue.message, decision.text):
                 decision.text = cue.message
                 decision.needs_review = True
                 decision.reason = "候选修改了标点、空白或换行，未采用，需复核"
@@ -75,6 +75,72 @@ def parse_correction_response(
             decision.needs_review = True
             decision.reason = decision.reason or "仍含损坏字符或听不清标记，需回听确认"
     return decisions
+
+
+def _layout_matches_with_noise_cleanup(source: str, candidate: str) -> bool:
+    if _protected_layout(candidate) == _protected_layout(source):
+        return True
+    normalized_source, removed_noise = _strip_repeated_symbol_noise(source)
+    if not removed_noise:
+        return False
+    normalized_candidate, _ = _strip_repeated_symbol_noise(candidate)
+    return _protected_layout(normalized_candidate) == _protected_layout(normalized_source)
+
+
+def _strip_repeated_symbol_noise(text: str) -> tuple[str, bool]:
+    """Remove only long, mechanically repeated punctuation/symbol runs.
+
+    This normalization is used for layout validation, not for output. It lets
+    the model remove a clearly identified ASR artifact without weakening the
+    existing punctuation, whitespace, and newline checks elsewhere.
+    """
+    output: list[str] = []
+    removed_noise = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "\ufffd" or not _is_punctuation_or_symbol(char):
+            output.append(char)
+            index += 1
+            continue
+
+        end = index
+        run: list[str] = []
+        compact: list[str] = []
+        while end < len(text):
+            current = text[end]
+            if current == " " or current == chr(9):
+                run.append(current)
+                end += 1
+            elif current != "\ufffd" and _is_punctuation_or_symbol(current):
+                run.append(current)
+                compact.append(current)
+                end += 1
+            else:
+                break
+        if _is_repeated_symbol_pattern("".join(compact)):
+            output.extend(char for char in run if char == " " or char == chr(9))
+            removed_noise = True
+        else:
+            output.extend(run)
+        index = end
+    return "".join(output), removed_noise
+
+
+def _is_punctuation_or_symbol(char: str) -> bool:
+    return unicodedata.category(char)[0] in {"P", "S"}
+
+
+def _is_repeated_symbol_pattern(text: str) -> bool:
+    if len(text) < 16:
+        return False
+    for width in range(1, 5):
+        if len(text) % width:
+            continue
+        repetitions = len(text) // width
+        if repetitions >= 6 and text == text[:width] * repetitions:
+            return True
+    return False
 
 
 def _protected_layout(text: str) -> list[str | None]:

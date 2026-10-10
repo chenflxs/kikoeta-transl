@@ -61,6 +61,7 @@ class _TaskPageState extends State<TaskPage> {
 
   Future<void> _exportLogs(AppState app) async {
     if (app.logs.isEmpty) return;
+    final logSnapshot = List<String>.unmodifiable(app.logs);
     final now = DateTime.now();
     String twoDigits(int value) => value.toString().padLeft(2, '0');
     final fileName =
@@ -74,7 +75,7 @@ class _TaskPageState extends State<TaskPage> {
         allowedExtensions: ['txt'],
       );
       if (path == null || path.isEmpty) return;
-      await File(path).writeAsString('${app.logs.join('\n')}\n');
+      await File(path).writeAsString('${logSnapshot.join('\n')}\n');
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,

@@ -315,7 +315,6 @@ class AppState extends ChangeNotifier {
         '${twoDigits(now.day)} ${twoDigits(now.hour)}:${twoDigits(now.minute)}:'
         '${twoDigits(now.second)}';
     logs.add('[$timestamp] $message');
-    if (logs.length > 400) logs.removeRange(0, logs.length - 400);
   }
 
   @override

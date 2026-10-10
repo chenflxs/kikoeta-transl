@@ -42,6 +42,7 @@ def process_file(
     workspace = job_dir / "gt"
     correction_review = None
     translation_review = None
+    asr_cleanup_entries: list[dict] = []
     try:
         _raise_if_stopped(stop_event)
         if kind == "subtitle":
@@ -69,13 +70,45 @@ def process_file(
             _raise_if_stopped(stop_event)
             if not cues:
                 raise PipelineError("ASR 没有产出字幕")
+            from .stages.asr_cleanup import cleanup_asr_cues
+            original_cues = cues
+            cues, asr_cleanup_entries = cleanup_asr_cues(cues)
+            if not cues and original_cues:
+                cues = [
+                    Cue(
+                        start=item.start,
+                        end=item.end,
+                        message=item.message,
+                        src_message=item.src_message or item.message,
+                    )
+                    for item in original_cues
+                ]
+                asr_cleanup_entries = [
+                    {**entry, "action": "review_only_all_removed", "processed": entry["original"]}
+                    for entry in asr_cleanup_entries
+                ]
+                emit("log", file=path, message="ASR 符号噪声清理会移除全部字幕，已保留原始结果并记录待复核")
+            if asr_cleanup_entries:
+                removed = sum(entry["action"] == "removed_symbol_noise" for entry in asr_cleanup_entries)
+                trimmed = sum(entry["action"] == "trimmed_repeated_symbol_suffix" for entry in asr_cleanup_entries)
+                review_only = sum(entry["action"].startswith("review_only") for entry in asr_cleanup_entries)
+                emit(
+                    "log",
+                    file=path,
+                    message=f"ASR 听写后符号噪声处理完成：移除 {removed} 条，清理尾部 {trimmed} 条，保留待复核 {review_only} 条",
+                )
 
         src_cues = [
-            Cue(start=item.start, end=item.end, message=item.message, src_message=item.message)
+            Cue(
+                start=item.start,
+                end=item.end,
+                message=item.src_message or item.message,
+                src_message=item.src_message or item.message,
+            )
             for item in cues
         ]
         for item in cues:
-            item.src_message = item.message
+            item.src_message = item.src_message or item.message
 
         damaged_asr = kind == "media" and any("\ufffd" in item.message for item in cues)
         if damaged_asr:
@@ -141,6 +174,11 @@ def process_file(
                 output=replace(settings.output, suffix=suffix),
             )
         outputs = export_cues(cues, path, export_settings, src_cues=src_cues)
+        if asr_cleanup_entries:
+            from .stages.asr_cleanup import write_asr_cleanup_report
+            report_path = write_asr_cleanup_report(outputs[0], asr_cleanup_entries)
+            outputs.append(report_path)
+            emit("log", file=path, message=f"ASR 符号噪声处理记录已保存：{report_path}")
         if correction_review is not None:
             report_path = correction_review.write(outputs[0])
             outputs.append(report_path)

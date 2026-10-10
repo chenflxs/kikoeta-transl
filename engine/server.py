@@ -267,7 +267,14 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     base = payload.get("base_url") or ""
                     key = payload.get("api_key") or ""
-                models = list_openai_models(str(base or ""), str(key or ""), settings.proxy)
+                models = list_openai_models(
+                    str(base or ""),
+                    str(key or ""),
+                    settings.proxy,
+                    index_compat=(
+                        kind == "translate" and settings.translate.index_compat
+                    ),
+                )
             except Exception as exc:
                 self._error(400, str(exc))
                 return

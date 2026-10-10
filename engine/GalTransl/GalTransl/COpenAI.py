@@ -9,7 +9,7 @@ from GalTransl.ConfigHelper import CProjectConfig, CProxy, build_httpx_sync_prox
 from typing import Optional, Tuple
 from random import choice
 from asyncio import Queue
-from openai import OpenAI
+from openai import OpenAI, Omit
 import re
 import httpx
 from GalTransl.TerminalOutput import should_print_translation_logs, terminal_progress
@@ -185,9 +185,21 @@ class COpenAITokenPool:
             section_name = "OpenAI-Compatible"
             LOGGER.info(f"API URL: {token.domain}/chat/completions")
             proxy_kwargs = build_httpx_sync_proxy_kwargs(proxy.addr if proxy else None)
+            default_headers = (
+                self.pj_config.getBackendConfigSection(section_name).get(
+                    "default_headers"
+                )
+                or {}
+            )
+            default_headers = dict(default_headers)
+            if self.pj_config.getBackendConfigSection(section_name).get(
+                "omit_api_key_header"
+            ):
+                default_headers["Authorization"] = Omit()
             client = OpenAI(
                 api_key=token.token,
                 base_url=token.domain,
+                default_headers=default_headers or None,
                 http_client=httpx.Client(**proxy_kwargs) if proxy_kwargs else None,
             )
             # 可用性检测只关心"能否成功返回一个响应"，

@@ -204,10 +204,17 @@ def list_gt_dicts() -> list[dict[str, object]]:
     return items
 
 
-def list_openai_models(base_url: str, api_key: str = "", proxy: str = "") -> list[str]:
+def list_openai_models(
+    base_url: str,
+    api_key: str = "",
+    proxy: str = "",
+    index_compat: bool = False,
+) -> list[str]:
     url = openai_models_url(base_url)
     headers = {}
-    if api_key:
+    if index_compat:
+        headers["User-Agent"] = "Index-Translate-Client/1.0"
+    elif api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     kwargs: dict = {"timeout": 15, "headers": headers}
     if proxy:

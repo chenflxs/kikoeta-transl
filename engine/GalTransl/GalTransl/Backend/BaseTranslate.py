@@ -18,7 +18,13 @@ from GalTransl.CSentense import CSentense, CTransList
 from GalTransl.Cache import save_transCache_to_json
 from GalTransl.Dictionary import CGptDict
 from GalTransl.Utils import load_guideline_file, fix_quotes2
-from openai import RateLimitError, AsyncOpenAI, APIConnectionError, APITimeoutError
+from openai import (
+    RateLimitError,
+    AsyncOpenAI,
+    APIConnectionError,
+    APITimeoutError,
+    Omit,
+)
 
 try:
     from openai import DefaultAioHttpClient
@@ -205,6 +211,14 @@ class BaseTranslate:
         backend_config = config.getBackendConfigSection("OpenAI-Compatible")
         raw_extra_body = backend_config.get("extra_body") or {}
         self.extra_body = dict(raw_extra_body) if isinstance(raw_extra_body, dict) else {}
+        raw_default_headers = backend_config.get("default_headers") or {}
+        self.default_headers = (
+            dict(raw_default_headers)
+            if isinstance(raw_default_headers, dict)
+            else {}
+        )
+        if backend_config.get("omit_api_key_header"):
+            self.default_headers["Authorization"] = Omit()
 
         if config.getKey("internals.enableProxy") == True:
             self.proxyProvider = proxy_pool
@@ -378,6 +392,7 @@ class BaseTranslate:
             client = AsyncOpenAI(
                 api_key=token.token,
                 base_url=token.domain,
+                default_headers=self.default_headers,
                 max_retries=0,
                 http_client=http_client,
             )
@@ -485,6 +500,7 @@ class BaseTranslate:
             replacement = AsyncOpenAI(
                 api_key=token.token,
                 base_url=token.domain,
+                default_headers=self.default_headers,
                 max_retries=0,
                 http_client=http_client,
             )

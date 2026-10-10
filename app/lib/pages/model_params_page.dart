@@ -24,6 +24,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
   late final TextEditingController tokenLimit;
   bool correctThinkingEnabled = false;
   bool translateThinkingEnabled = true;
+  bool indexModelCompat = false;
   late String promptMode;
   bool settingsSynced = false;
   late String _savedDraft;
@@ -56,6 +57,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       text: _text(translate['token_limit'], '1024'),
     );
     translateThinkingEnabled = _boolValue(translate['enable_thinking'], true);
+    indexModelCompat = _boolValue(translate['index_compat'], false);
     promptMode = '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
         ? 'overwrite'
         : 'append';
@@ -83,6 +85,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       'batchSize': _text(translate['batch_size'], '10'),
       'tokenLimit': _text(translate['token_limit'], '1024'),
       'translateThinking': _boolValue(translate['enable_thinking'], true),
+      'indexModelCompat': _boolValue(translate['index_compat'], false),
       'promptMode': '${translate['prompt_mode'] ?? 'append'}' == 'overwrite'
           ? 'overwrite'
           : 'append',
@@ -98,6 +101,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
       batchSize.text = merged.values['batchSize'] as String;
       tokenLimit.text = merged.values['tokenLimit'] as String;
       translateThinkingEnabled = merged.values['translateThinking'] as bool;
+      indexModelCompat = merged.values['indexModelCompat'] as bool;
       promptMode = merged.values['promptMode'] as String;
     });
     _savedDraft = merged.baseline;
@@ -113,6 +117,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     'batchSize': batchSize.text,
     'tokenLimit': tokenLimit.text,
     'translateThinking': translateThinkingEnabled,
+    'indexModelCompat': indexModelCompat,
     'promptMode': promptMode,
   };
 
@@ -166,6 +171,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     final batch = _int(batchSize.text, 10);
     final tokens = _int(tokenLimit.text, 1024);
     final translateThinking = translateThinkingEnabled;
+    final indexCompat = indexModelCompat;
     final mode = promptMode;
     await widget.app.updateSettings((next) {
       next['correct'] = {
@@ -183,6 +189,7 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
         'batch_size': batch,
         'token_limit': tokens,
         'enable_thinking': translateThinking,
+        'index_compat': indexCompat,
       };
     });
     _savedDraft = draft;
@@ -241,6 +248,14 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
         const SectionTitle('翻译'),
         KtGroup(
           children: [
+            KtSwitchRow(
+              icon: Icons.hub_outlined,
+              title: 'Index-Translate 兼容模式',
+              sub: '使用官方脚本的请求标识和思考参数格式，并固定关闭思考模式。',
+              value: indexModelCompat,
+              onChanged: (value) =>
+                  setState(() => indexModelCompat = value),
+            ),
             KtSelectField<String>(
               label: 'Prompt 工作模式',
               value: promptMode,
@@ -261,8 +276,11 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
             KtSwitchRow(
               icon: Icons.psychology,
               title: '启用思考/推理',
-              sub: '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
-              value: translateThinkingEnabled,
+              sub: indexModelCompat
+                  ? 'Index 兼容模式下固定关闭思考。'
+                  : '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
+              value: indexModelCompat ? false : translateThinkingEnabled,
+              enabled: !indexModelCompat,
               onChanged: (value) =>
                   setState(() => translateThinkingEnabled = value),
               showDivider: false,

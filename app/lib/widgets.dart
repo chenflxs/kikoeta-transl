@@ -105,6 +105,7 @@ class KtSwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
   final bool showDivider;
+  final bool enabled;
 
   const KtSwitchRow({
     super.key,
@@ -114,6 +115,7 @@ class KtSwitchRow extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.showDivider = true,
+    this.enabled = true,
   });
 
   @override
@@ -124,10 +126,10 @@ class KtSwitchRow extends StatelessWidget {
       title: title,
       sub: sub,
       showDivider: showDivider,
-      onTap: () => onChanged(!value),
+      onTap: enabled ? () => onChanged(!value) : null,
       trailing: Switch(
         value: value,
-        onChanged: onChanged,
+        onChanged: enabled ? onChanged : null,
         activeTrackColor: p.accent,
       ),
     );

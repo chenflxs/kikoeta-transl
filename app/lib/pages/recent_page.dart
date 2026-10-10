@@ -269,7 +269,15 @@ class _RecentPageState extends State<RecentPage> {
     final files =
         (entry['files'] as List?)?.map((item) => '$item').toList() ??
         const <String>[];
-    final outputs = (entry['outputs'] as List?) ?? const [];
+    const lyricExtensions = {'.lrc', '.srt', '.vtt', '.ass', '.ssa'};
+    final outputs = ((entry['outputs'] as List?) ?? const [])
+        .whereType<Map>()
+        .where(
+          (output) => lyricExtensions.contains(
+            p.extension('${output['path'] ?? ''}').toLowerCase(),
+          ),
+        )
+        .toList();
     final bytes = (entry['cache_bytes'] as num?)?.toInt() ?? 0;
     final cacheCount = (entry['cache_dir_count'] as num?)?.toInt() ?? 0;
     final source = entry['source'] == 'kikoeta' ? ' · 来自 Kikoeta' : '';
@@ -328,7 +336,7 @@ class _RecentPageState extends State<RecentPage> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '未记录成果文件（旧任务可能只保留缓存）',
+                  '暂无可显示的成品歌词',
                   style: TextStyle(fontSize: 12, color: colors.dim),
                 ),
               ),

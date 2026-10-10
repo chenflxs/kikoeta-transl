@@ -163,6 +163,7 @@ class TranslateSettings:
     # None leaves the provider default unchanged; False disables thinking
     # through the OpenAI-compatible extra_body field where supported.
     enable_thinking: bool | None = None
+    index_compat: bool = False
 
 
 OUTPUT_PRESETS = (
@@ -313,6 +314,9 @@ class AppSettings:
                 batch_size=_as_int(translate.get("batch_size"), 10),
                 token_limit=_as_int(translate.get("token_limit"), 1024),
                 enable_thinking=_optional_bool(translate.get("enable_thinking")),
+                index_compat=(
+                    _optional_bool(translate.get("index_compat")) is True
+                ),
             ),
             output=_output_from_dict(output, formats),
             dict_pre=str(raw.get("dict_pre") or ""),

@@ -290,16 +290,28 @@ def _write_config(workspace: Path, settings: AppSettings) -> None:
             }
         ]
         openai_cfg["checkAvailable"] = bool(settings.translate.openai.api_key)
-        if settings.translate.enable_thinking is None:
-            openai_cfg.pop("extra_body", None)
-        else:
-            openai_cfg["extra_body"] = {
-                "thinking": {
-                    "type": "enabled"
-                    if settings.translate.enable_thinking
-                    else "disabled"
-                }
+        if settings.translate.index_compat:
+            openai_cfg["default_headers"] = {
+                "User-Agent": "Index-Translate-Client/1.0"
             }
+            openai_cfg["omit_api_key_header"] = True
+            openai_cfg["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+        else:
+            openai_cfg.pop("default_headers", None)
+            openai_cfg.pop("omit_api_key_header", None)
+        if not settings.translate.index_compat:
+            if settings.translate.enable_thinking is None:
+                openai_cfg.pop("extra_body", None)
+            else:
+                openai_cfg["extra_body"] = {
+                    "thinking": {
+                        "type": "enabled"
+                        if settings.translate.enable_thinking
+                        else "disabled"
+                    }
+                }
     proxy = cfg.setdefault("proxy", {})
     proxy["enableProxy"] = bool(settings.proxy)
     proxy["proxies"] = [{"address": settings.proxy}] if settings.proxy else []

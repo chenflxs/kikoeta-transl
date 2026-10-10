@@ -36,6 +36,7 @@ class _ModelsPageState extends State<ModelsPage> {
   bool queryingCorrect = false;
   bool queryingTranslate = false;
   bool settingsSynced = false;
+  bool indexModelCompat = false;
   String correctProvider = 'online';
   String translateProvider = 'online';
   late String _savedDraft;
@@ -60,6 +61,7 @@ class _ModelsPageState extends State<ModelsPage> {
     llamaModel = TextEditingController(text: '${s['llama_model'] ?? ''}');
     correctProvider = _provider('${correct['provider'] ?? 'online'}');
     translateProvider = _provider('${translate['provider'] ?? 'online'}');
+    indexModelCompat = translate['index_compat'] == true;
     correctBase = TextEditingController(text: '${correct['base_url'] ?? ''}');
     correctModel = TextEditingController(text: '${correct['model'] ?? ''}');
     correctKey = TextEditingController(text: '${correct['api_key'] ?? ''}');
@@ -97,6 +99,7 @@ class _ModelsPageState extends State<ModelsPage> {
       'correctModel': '${correct['model'] ?? ''}',
       'correctKey': '${correct['api_key'] ?? ''}',
       'translateProvider': _provider('${translate['provider'] ?? 'online'}'),
+      'indexModelCompat': translate['index_compat'] == true,
       'transBase': '${openai['base_url'] ?? ''}',
       'transModel': '${openai['model'] ?? ''}',
       'transKey': '${openai['api_key'] ?? ''}',
@@ -115,6 +118,7 @@ class _ModelsPageState extends State<ModelsPage> {
       correctModel.text = merged.values['correctModel'] as String;
       correctKey.text = merged.values['correctKey'] as String;
       translateProvider = merged.values['translateProvider'] as String;
+      indexModelCompat = merged.values['indexModelCompat'] as bool;
       transBase.text = merged.values['transBase'] as String;
       transModel.text = merged.values['transModel'] as String;
       transKey.text = merged.values['transKey'] as String;
@@ -135,6 +139,7 @@ class _ModelsPageState extends State<ModelsPage> {
     'correctModel': correctModel.text,
     'correctKey': correctKey.text,
     'translateProvider': translateProvider,
+    'indexModelCompat': indexModelCompat,
     'transBase': transBase.text,
     'transModel': transModel.text,
     'transKey': transKey.text,
@@ -223,6 +228,7 @@ class _ModelsPageState extends State<ModelsPage> {
     final correctionModel = correctModel.text.trim();
     final correctionKey = correctKey.text.trim();
     final translationProvider = translateProvider;
+    final indexCompat = indexModelCompat;
     final translationBackend = translator.text.trim();
     final translationBase = transBase.text.trim();
     final translationModel = transModel.text.trim();
@@ -249,6 +255,7 @@ class _ModelsPageState extends State<ModelsPage> {
       );
       translate['provider'] = translationProvider;
       translate['translator'] = translationBackend;
+      translate['index_compat'] = indexCompat;
       translate['openai'] = {
         ...(translate['openai'] as Map? ?? {}),
         'base_url': translationBase,
@@ -638,6 +645,14 @@ class _ModelsPageState extends State<ModelsPage> {
                     trailing: Text('127.0.0.1:${_llama['port'] ?? 18766}'),
                   )
                 else ...[
+                  KtSwitchRow(
+                    icon: Icons.hub_outlined,
+                    title: 'Index-Translate 兼容模式',
+                    sub: '使用官方脚本的请求标识和思考参数格式，并固定关闭思考模式。',
+                    value: indexModelCompat,
+                    onChanged: (value) =>
+                        setState(() => indexModelCompat = value),
+                  ),
                   KtField(controller: transBase, label: 'OpenAI 兼容地址'),
                   KtComboField(
                     controller: transModel,

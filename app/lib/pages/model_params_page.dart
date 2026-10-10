@@ -248,14 +248,6 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
         const SectionTitle('翻译'),
         KtGroup(
           children: [
-            KtSwitchRow(
-              icon: Icons.hub_outlined,
-              title: 'Index-Translate 兼容模式',
-              sub: '使用官方脚本的请求标识和思考参数格式，并固定关闭思考模式。',
-              value: indexModelCompat,
-              onChanged: (value) =>
-                  setState(() => indexModelCompat = value),
-            ),
             KtSelectField<String>(
               label: 'Prompt 工作模式',
               value: promptMode,

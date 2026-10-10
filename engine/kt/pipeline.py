@@ -71,31 +71,14 @@ def process_file(
             if not cues:
                 raise PipelineError("ASR 没有产出字幕")
             from .stages.asr_cleanup import cleanup_asr_cues
-            original_cues = cues
             cues, asr_cleanup_entries = cleanup_asr_cues(cues)
-            if not cues and original_cues:
-                cues = [
-                    Cue(
-                        start=item.start,
-                        end=item.end,
-                        message=item.message,
-                        src_message=item.src_message or item.message,
-                    )
-                    for item in original_cues
-                ]
-                asr_cleanup_entries = [
-                    {**entry, "action": "review_only_all_removed", "processed": entry["original"]}
-                    for entry in asr_cleanup_entries
-                ]
-                emit("log", file=path, message="ASR 符号噪声清理会移除全部字幕，已保留原始结果并记录待复核")
             if asr_cleanup_entries:
-                removed = sum(entry["action"] == "removed_symbol_noise" for entry in asr_cleanup_entries)
-                trimmed = sum(entry["action"] == "trimmed_repeated_symbol_suffix" for entry in asr_cleanup_entries)
+                capped = sum(entry["action"] == "capped_repeated_symbol_runs" for entry in asr_cleanup_entries)
                 review_only = sum(entry["action"].startswith("review_only") for entry in asr_cleanup_entries)
                 emit(
                     "log",
                     file=path,
-                    message=f"ASR 听写后符号噪声处理完成：移除 {removed} 条，清理尾部 {trimmed} 条，保留待复核 {review_only} 条",
+                    message=f"ASR 听写后重复符号处理完成：截断 {capped} 条，保留待复核 {review_only} 条",
                 )
 
         src_cues = [

@@ -238,7 +238,7 @@ class CorrectionReview:
                     review_assessed=decision.assessed))
 
     def write(self, subtitle_path: str | Path) -> str:
-        """Save alongside the export so cleaning job caches cannot lose evidence."""
+        """Save a correction report beside the supplied subtitle-shaped path."""
         destination = Path(subtitle_path).with_suffix(".correction.json")
         payload = dict(schema_version=1, source_file=self.source_file, model=self.model,
             mode="text_only", note="未向矫正模型发送音频；文字矫正和本地时间整理不代表音频复校。",

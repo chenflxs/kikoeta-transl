@@ -157,15 +157,22 @@ def process_file(
                 output=replace(settings.output, suffix=suffix),
             )
         outputs = export_cues(cues, path, export_settings, src_cues=src_cues)
+        # Review reports are useful processing evidence, but they are not
+        # deliverables. Keep them with the task cache instead of the export
+        # directory so output folders and download lists contain only results.
         if asr_cleanup_entries:
             from .stages.asr_cleanup import write_asr_cleanup_report
-            report_path = write_asr_cleanup_report(outputs[0], asr_cleanup_entries)
-            outputs.append(report_path)
-            emit("log", file=path, message=f"ASR 符号噪声处理记录已保存：{report_path}")
+            report_dir = workspace / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_source = report_dir / Path(outputs[0]).name
+            report_path = write_asr_cleanup_report(report_source, asr_cleanup_entries)
+            emit("log", file=path, message=f"ASR 符号噪声处理记录已保存在任务缓存：{report_path}")
         if correction_review is not None:
-            report_path = correction_review.write(outputs[0])
-            outputs.append(report_path)
-            emit("log", file=path, message=f"矫正记录已保存：{report_path}，含修改前后文本、待回听条目和时间轴问题")
+            report_dir = workspace / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_source = report_dir / Path(outputs[0]).name
+            report_path = correction_review.write(report_source)
+            emit("log", file=path, message=f"矫正记录已保存在任务缓存：{report_path}，含修改前后文本、待回听条目和时间轴问题")
         if translation_review is not None:
             report_path = translation_review.write(outputs[0])
             if report_path is not None:

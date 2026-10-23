@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
@@ -14,6 +16,7 @@ import 'pages/params_page.dart';
 import 'pages/recent_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/task_page.dart';
+import 'services/theme_reveal.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -46,25 +49,148 @@ class KtApp extends StatefulWidget {
   State<KtApp> createState() => _KtAppState();
 }
 
-class _KtAppState extends State<KtApp> with WindowListener, tray.TrayListener {
+class _KtAppState extends State<KtApp>
+    with
+        WidgetsBindingObserver,
+        WindowListener,
+        tray.TrayListener,
+        SingleTickerProviderStateMixin {
   bool _closing = false;
   bool _closePromptOpen = false;
+
+  /// 圆形揭示时长：覆盖整个窗口的扩散，接近 Android 圆形揭示的观感
+  static const Duration _revealDuration = Duration(milliseconds: 450);
+
+  /// 根节点：抓「切换前外观」的截图用
+  final GlobalKey _rootKey = GlobalKey();
+  late final AnimationController _revealAnim = AnimationController(
+    vsync: this,
+    duration: _revealDuration,
+  );
+  late final CurvedAnimation _revealCurve = CurvedAnimation(
+    parent: _revealAnim,
+    curve: Curves.fastOutSlowIn,
+  );
+  ui.Image? _revealImage;
+  Offset _revealOrigin = Offset.zero;
+  int _revealSeq = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     windowManager.addListener(this);
     tray.trayManager.addListener(this);
+    _revealAnim.addStatusListener(_onRevealStatus);
+    ThemeReveal.instance.bind(_switchThemeWithReveal);
     unawaited(_initTray());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     tray.trayManager.removeListener(this);
     unawaited(tray.trayManager.destroy());
     windowManager.removeListener(this);
+    _revealImage?.dispose();
+    _revealCurve.dispose();
+    _revealAnim.dispose();
     super.dispose();
   }
+
+  /// 跟随系统时，系统深浅色的变化同样从窗口中心扩散
+  @override
+  void didChangePlatformBrightness() {
+    if (appState.themeNotifier.value == 'system') {
+      unawaited(_switchThemeWithReveal('system', null));
+    }
+  }
+
+  /// 切换主题并播放圆形揭示动画。
+  ///
+  /// 顺序是关键：先抓「切换前」的截图，再让真实界面重建一次换成新主题，
+  /// 最后把截图按不断扩大的圆裁掉。因此每帧只多一次贴图绘制，
+  /// 没有第二棵控件树、也没有新旧外观同时插值的浑浊感。
+  Future<void> _switchThemeWithReveal(
+    String theme,
+    Offset? globalOrigin,
+  ) async {
+    final seq = ++_revealSeq;
+    // 目标亮度与当前渲染亮度相同（例如深色切到「跟随系统」而系统本就是深色）时无需动画
+    if (_targetBrightness(theme) == _renderedBrightness) {
+      appState.previewTheme(theme);
+      return;
+    }
+    if (_revealImage != null) {
+      // 上一次揭示还没播完：先撤掉贴图并等这一帧落地，避免把它拍进新截图
+      _revealAnim.stop();
+      _endReveal();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || seq != _revealSeq) return;
+    }
+
+    final image = await _captureRoot();
+    if (!mounted || seq != _revealSeq) {
+      image?.dispose(); // 期间又切了一次，交给最后一次
+      return;
+    }
+
+    final box = _rootKey.currentContext?.findRenderObject() as RenderBox?;
+    final origin = box == null || !box.hasSize
+        ? Offset.zero
+        : globalOrigin == null
+        ? box.size.center(Offset.zero) // 设置页 / 跟随系统：窗口中心
+        : box.globalToLocal(globalOrigin); // 按钮：按钮中心
+
+    setState(() {
+      _revealImage?.dispose();
+      _revealImage = image;
+      _revealOrigin = origin;
+      _revealAnim.value = 0;
+    });
+    appState.previewTheme(theme); // 真实界面只在这里重建一次
+    if (image == null) return; // 截图失败：直接切换，不播放动画
+    _revealAnim.forward();
+  }
+
+  /// 抓取根节点当前外观（切换前的样子），失败返回 null
+  Future<ui.Image?> _captureRoot() async {
+    final boundary =
+        _rootKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null || boundary.size.isEmpty) return null;
+    try {
+      // 上限 2.0：再高只是徒增一次读回的内存与耗时
+      final ratio = math.min(MediaQuery.devicePixelRatioOf(context), 2.0);
+      return await boundary.toImage(pixelRatio: ratio);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _onRevealStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) _endReveal();
+  }
+
+  void _endReveal() {
+    final image = _revealImage;
+    if (image == null) return;
+    setState(() => _revealImage = null);
+    image.dispose();
+  }
+
+  /// 该主题下应显示的亮度
+  Brightness _targetBrightness(String theme) => switch (theme) {
+    'light' => Brightness.light,
+    'dark' => Brightness.dark,
+    _ => WidgetsBinding.instance.platformDispatcher.platformBrightness,
+  };
+
+  /// 当前这一帧实际渲染的亮度（跟随系统时以 MaterialApp 读到的平台亮度为准）
+  Brightness get _renderedBrightness => switch (appState.themeNotifier.value) {
+    'light' => Brightness.light,
+    'dark' => Brightness.dark,
+    _ => MediaQuery.platformBrightnessOf(context),
+  };
 
   Future<void> _initTray() async {
     try {
@@ -219,11 +345,37 @@ class _KtAppState extends State<KtApp> with WindowListener, tray.TrayListener {
         navigatorKey: navigatorKey,
         title: 'Kikoeta Transl',
         debugShowCheckedModeBanner: false,
+        builder: (context, child) {
+          // 整个窗口都在根 RepaintBoundary 里：主题切换的圆形揭示
+          // 既要抓它的截图，也要盖住它
+          return RepaintBoundary(
+            key: _rootKey,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                child ?? const SizedBox.shrink(),
+                if (_revealImage != null)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: ThemeRevealPainter(
+                          image: _revealImage!,
+                          origin: _revealOrigin,
+                          progress: _revealCurve,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         themeMode: _themeMode(appState.themeNotifier.value),
-        themeAnimationDuration: const Duration(milliseconds: 220),
-        themeAnimationCurve: Curves.easeOutCubic,
+        // 主题切换交给圆形揭示动画，这里必须瞬时生效：否则被圆露出的区域
+        // 会同步做颜色插值，圆的边界上会看到新旧混色
+        themeAnimationDuration: Duration.zero,
         home: const Shell(),
       ),
     );

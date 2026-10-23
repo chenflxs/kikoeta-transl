@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_state.dart';
+import '../services/theme_reveal.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
 
@@ -126,7 +127,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _changeTheme(String value) async {
     setState(() => _themeSelection = value);
-    widget.app.previewTheme(value);
+    // 主题切换统一走圆形揭示动画：设置页从窗口中心扩散
+    ThemeReveal.instance.fromCenter(value);
     await widget.app.updateSettings((next) => next['theme'] = value);
   }
 
@@ -349,6 +351,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tools = widget.app.tools;
+    final p = paletteOf(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
       children: [
@@ -415,16 +418,57 @@ class _SettingsPageState extends State<SettingsPage> {
         const SectionTitle('界面与服务'),
         KtGroup(
           children: [
-            KtSelectField<String>(
-              label: '主题',
-              value: themeMode,
-              values: const ['system', 'light', 'dark'],
-              labelOf: (value) => switch (value) {
-                'system' => '跟随系统',
-                'light' => '浅色',
-                _ => '深色',
+            KtRow(
+              // 图标随当前主题模式变化，和 kikoeta 的设置页一致
+              icon: switch (themeMode) {
+                'light' => Icons.light_mode_outlined,
+                'dark' => Icons.dark_mode_outlined,
+                _ => Icons.brightness_auto_outlined,
               },
-              onChanged: _changeTheme,
+              title: '主题',
+              // 三段按钮按内容自适应宽度，不撑满整行
+              trailing: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'system', label: Text('跟随系统')),
+                  ButtonSegment(value: 'light', label: Text('浅色')),
+                  ButtonSegment(value: 'dark', label: Text('深色')),
+                ],
+                selected: {themeMode},
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  backgroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? p.accent.withValues(alpha: .12)
+                        : p.surface2,
+                  ),
+                  foregroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? p.accent
+                        : p.muted,
+                  ),
+                  // 选中段加一圈同色细边：浅色调下 12% 底色对比很弱，
+                  // 只靠底色不容易一眼看出当前选的是哪一段
+                  side: WidgetStateProperty.resolveWith(
+                    (states) => BorderSide(
+                      color: states.contains(WidgetState.selected)
+                          ? p.accent.withValues(alpha: .6)
+                          : p.line,
+                      width: 1,
+                    ),
+                  ),
+                  // 视觉高度收窄到与设置页其它内联控件齐平
+                  minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+                  textStyle: const WidgetStatePropertyAll(
+                    TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onSelectionChanged: (selection) =>
+                    _changeTheme(selection.first),
+              ),
             ),
             KtSwitchRow(
               icon: Icons.lan_outlined,

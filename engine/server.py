@@ -73,7 +73,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allow_request(path):
             return
         if path == "/api/v1/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 6, "service": "remote"})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": 7, "service": "remote"})
             return
         if path == "/api/v1/cache":
             self._remote_cache_list()
@@ -85,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
             self._remote_job_get(path, query)
             return
         if path == "/api/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 6})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": 7})
             return
         if path == "/api/client-heartbeat":
             self._heartbeat()
@@ -110,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._error(403, "recent jobs are only available from localhost")
                 return
             active = {job.job_id for job in MANAGER.list()
-                      if job.status in {"queued", "running"}}
+                      if job.is_unfinished}
             self._json({"entries": list_recent_jobs(active)})
             return
         if path.startswith("/api/jobs/"):
@@ -190,20 +190,17 @@ class Handler(BaseHTTPRequestHandler):
                     cache_context=_remote_cache_context(payload),
                 )
                 job = MANAGER.create(request, source="kikoeta")
+            except RuntimeError as exc:
+                cleanup_intermediates(*cleanup_paths)
+                self._error(409, str(exc))
+                return
             except (ValueError, OSError, TypeError, base64.binascii.Error) as exc:
                 cleanup_intermediates(*cleanup_paths)
                 self._error(400, str(exc))
                 return
             self._json(_remote_job_payload(job), status=201)
             return
-        if path.startswith("/api/v1/jobs/") and path.endswith("/cancel"):
-            job_id = path.split("/")[4]
-            try:
-                job = MANAGER.cancel(job_id)
-            except KeyError:
-                self._error(404, "job not found")
-                return
-            self._json(_remote_job_payload(job))
+        if self._job_action(path, remote=True):
             return
         if path == "/api/jobs":
             payload = self._read_json()
@@ -218,19 +215,15 @@ class Handler(BaseHTTPRequestHandler):
             )
             try:
                 job = MANAGER.create(request)
+            except RuntimeError as exc:
+                self._error(409, str(exc))
+                return
             except ValueError as exc:
                 self._error(400, str(exc))
                 return
             self._json(job.to_dict(), status=201)
             return
-        if path.startswith("/api/jobs/") and path.endswith("/cancel"):
-            job_id = path.split("/")[3]
-            try:
-                job = MANAGER.cancel(job_id)
-            except KeyError:
-                self._error(404, "job not found")
-                return
-            self._json(job.to_dict())
+        if self._job_action(path, remote=False):
             return
         if path == "/api/test/correct":
             try:
@@ -282,6 +275,29 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._error(404, "not found")
 
+    def _job_action(self, path: str, *, remote: bool) -> bool:
+        parts = path.strip("/").split("/")
+        prefix = ["api", "v1", "jobs"] if remote else ["api", "jobs"]
+        if len(parts) != len(prefix) + 2 or parts[:len(prefix)] != prefix:
+            return False
+        job_id, action = parts[-2:]
+        if action not in {"cancel", "preempt"}:
+            return False
+        try:
+            if action == "preempt":
+                job = MANAGER.preempt(job_id)
+            else:
+                job = MANAGER.cancel(job_id)
+        except KeyError:
+            self._error(404, "job not found")
+        except ValueError as exc:
+            self._error(400, str(exc))
+        except RuntimeError as exc:
+            self._error(409, str(exc))
+        else:
+            self._json(_remote_job_payload(job) if remote else job.to_dict())
+        return True
+
     def _remote_job_get(self, path: str, query: dict[str, list[str]]) -> None:
         parts = path.split("/")
         if len(parts) < 5:
@@ -327,7 +343,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if len(parts) == 3:
             active = {job.job_id for job in MANAGER.list()
-                      if job.status in {"queued", "running"}}
+                      if job.is_unfinished}
             try:
                 deleted = delete_all_recent_jobs(active)
             except OSError as exc:
@@ -338,8 +354,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4:
             job_id = parts[3]
             job = MANAGER.get(job_id)
-            if job is not None and job.status in {"queued", "running"}:
-                self._error(409, "任务仍在运行，不能删除记录")
+            if job is not None and job.is_unfinished:
+                self._error(409, "任务仍在运行或暂存，不能删除记录")
                 return
             try:
                 delete_recent_job(job_id)
@@ -356,8 +372,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         job_id = parts[3]
         job = MANAGER.get(job_id)
-        if job is not None and job.status in {"queued", "running"}:
-            self._error(409, "任务仍在运行，不能清理缓存")
+        if job is not None and job.is_unfinished:
+            self._error(409, "任务仍在运行或暂存，不能清理缓存")
             return
         try:
             freed = delete_translation_cache(job_id)

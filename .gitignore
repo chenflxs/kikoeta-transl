@@ -66,11 +66,7 @@ start build.bat
 *.lnk
 test/
 tests/
-!app/test/
-app/test/*
-!app/test/auto_save_test.dart
-!app/test/settings_persistence_test.dart
-!app/test/lls_cache_push_test.dart
+engine/test_*.py
 Thumbs.db
 Desktop.ini
 .DS_Store

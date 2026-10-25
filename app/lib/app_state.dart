@@ -30,10 +30,15 @@ class AppState extends ChangeNotifier {
   int _cursor = 0;
   Timer? _poll;
   Timer? _remoteJobDiscovery;
+  int _pollRevision = 0;
   bool _pollInFlight = false;
   bool _remoteJobDiscoveryInFlight = false;
+  bool _submittingJob = false;
+
+  bool get submittingJob => _submittingJob;
 
   bool get hasActiveJob {
+    if (_submittingJob) return true;
     final id = jobId;
     if (id == null || id.isEmpty) return false;
     return !const {
@@ -41,6 +46,7 @@ class AppState extends ChangeNotifier {
       'completed',
       'failed',
       'cancelled',
+      'paused',
     }.contains(jobStatus);
   }
 
@@ -185,6 +191,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> forceShutdownEngine() async {
+    _pollRevision++;
     _poll?.cancel();
     _poll = null;
     _remoteJobDiscovery?.cancel();
@@ -194,25 +201,33 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> startJob() async {
+    if (hasActiveJob) return;
     if (files.isEmpty) {
       engineMessage = '请先添加文件';
       notifyListeners();
       return;
     }
-    logs.clear();
-    _cursor = 0;
-    final created = await engine.createJob(
-      files: List.of(files),
-      enableCorrect: enableCorrect,
-      enableTranslate: enableTranslate,
-    );
-    jobId = created['job_id'] as String?;
-    jobStatus = created['status'] as String? ?? 'running';
-    jobSource = created['source']?.toString() ?? 'desktop';
-    engineMessage = '任务已开始';
+    _submittingJob = true;
     notifyListeners();
-    _poll?.cancel();
-    _poll = Timer.periodic(const Duration(milliseconds: 800), (_) => _tick());
+    try {
+      final created = await engine.createJob(
+        files: List.of(files),
+        enableCorrect: enableCorrect,
+        enableTranslate: enableTranslate,
+      );
+      logs.clear();
+      _cursor = (created['event_cursor'] as num?)?.toInt() ?? 0;
+      jobId = created['job_id'] as String?;
+      jobStatus = created['status'] as String? ?? 'running';
+      jobSource = created['source']?.toString() ?? 'desktop';
+      engineMessage = '任务已开始';
+      _restartPolling();
+    } catch (error) {
+      engineMessage = '提交任务失败：$error';
+    } finally {
+      _submittingJob = false;
+      notifyListeners();
+    }
   }
 
   Future<void> cancelJob() async {
@@ -227,10 +242,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> _tick() async {
     final id = jobId;
+    final revision = _pollRevision;
     if (id == null || _pollInFlight) return;
     _pollInFlight = true;
     try {
       final payload = await engine.events(id, _cursor);
+      if (revision != _pollRevision) return;
       final events = (payload['events'] as List?) ?? [];
       _cursor = payload['cursor'] as int? ?? _cursor;
       var changed = events.isNotEmpty;
@@ -246,11 +263,13 @@ class AppState extends ChangeNotifier {
         changed = true;
         _poll?.cancel();
         final job = await engine.job(id);
+        if (revision != _pollRevision) return;
         jobStatus = job['status']?.toString() ?? 'done';
-        engineMessage = '任务结束：$jobStatus';
+        engineMessage = jobStatus == 'paused' ? '任务已暂存' : '任务结束：$jobStatus';
       }
       if (changed) notifyListeners();
     } catch (e) {
+      if (revision != _pollRevision) return;
       if (e is TimeoutException) {
         _appendLog('等待 engine 事件超时，将继续轮询');
       } else {
@@ -260,6 +279,13 @@ class AppState extends ChangeNotifier {
     } finally {
       _pollInFlight = false;
     }
+  }
+
+  void _restartPolling() {
+    _poll?.cancel();
+    _pollRevision++;
+    _poll = Timer.periodic(const Duration(milliseconds: 800), (_) => _tick());
+    unawaited(_tick());
   }
 
   void _startRemoteJobDiscovery() {
@@ -283,12 +309,29 @@ class AppState extends ChangeNotifier {
       final candidates = jobs.reversed.where(
         (job) =>
             job['source'] == 'kikoeta' &&
-            const {'queued', 'running', 'cancelling'}.contains(job['status']),
+            const {
+              'queued',
+              'running',
+              'pausing',
+              'cancelling',
+            }.contains(job['status']),
       );
       if (candidates.isEmpty) return;
       final job = candidates.first;
       final id = job['job_id']?.toString() ?? '';
-      if (id.isEmpty || id == jobId) return;
+      if (id.isEmpty) return;
+      if (id == jobId) {
+        final status = job['status']?.toString() ?? jobStatus;
+        final changed = status != jobStatus;
+        final restart = _poll?.isActive != true;
+        jobStatus = status;
+        if (restart) {
+          engineMessage = '任务继续处理中';
+          _restartPolling();
+        }
+        if (changed || restart) notifyListeners();
+        return;
+      }
 
       _poll?.cancel();
       logs.clear();
@@ -297,9 +340,8 @@ class AppState extends ChangeNotifier {
       jobStatus = job['status']?.toString() ?? 'queued';
       jobSource = 'kikoeta';
       engineMessage = '正在显示由 kikoeta 发起的任务日志';
-      _poll = Timer.periodic(const Duration(milliseconds: 800), (_) => _tick());
+      _restartPolling();
       notifyListeners();
-      unawaited(_tick());
     } catch (_) {
       // The next discovery cycle retries after temporary local-engine errors.
     } finally {
@@ -319,6 +361,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _pollRevision++;
     _poll?.cancel();
     _remoteJobDiscovery?.cancel();
     unawaited(engine.shutdown());

@@ -303,7 +303,11 @@ class EngineClient {
         },
       }),
     );
-    return _decode(res);
+    final payload = _decode(res);
+    if (res.statusCode != 201) {
+      throw StateError(payload['error']?.toString() ?? '提交任务失败');
+    }
+    return payload;
   }
 
   Future<Map<String, dynamic>> job(String id) async => _get('/api/jobs/$id');

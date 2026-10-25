@@ -100,51 +100,6 @@ class _TaskPageState extends State<TaskPage> {
     _ => status,
   };
 
-  // Keep the card structure and spacing with Kikoeta's dictation page.
-  Widget _card({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-    Widget? action,
-  }) {
-    final p = paletteOf(context);
-    return Material(
-      color: p.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: p.line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 19, color: p.accent),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: p.text,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                ?action,
-              ],
-            ),
-            const SizedBox(height: 14),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
   ButtonStyle get _textActionStyle => TextButton.styleFrom(
     foregroundColor: paletteOf(context).muted,
     textStyle: const TextStyle(fontFamily: 'SarasaUI', fontSize: 12),
@@ -185,7 +140,7 @@ class _TaskPageState extends State<TaskPage> {
 
   Widget _stageCard(AppState app) {
     final p = paletteOf(context);
-    return _card(
+    return KtSection(
       title: '处理阶段',
       icon: Icons.tune_outlined,
       children: [
@@ -233,7 +188,7 @@ class _TaskPageState extends State<TaskPage> {
   Widget _inputCard(AppState app) {
     final p = paletteOf(context);
     final stopping = app.jobStatus == 'cancelling';
-    return _card(
+    return KtSection(
       title: '输入文件',
       icon: Icons.library_music_outlined,
       action: TextButton.icon(
@@ -371,7 +326,7 @@ class _TaskPageState extends State<TaskPage> {
       'cancelled' || 'cancelling' => p.dim,
       _ => p.muted,
     };
-    return _card(
+    return KtSection(
       title: '当前工作流',
       icon: Icons.timeline,
       action: app.jobStatus.isEmpty
@@ -418,7 +373,7 @@ class _TaskPageState extends State<TaskPage> {
 
   Widget _logCard(AppState app) {
     final p = paletteOf(context);
-    return _card(
+    return KtSection(
       title: '日志',
       icon: Icons.terminal,
       action: TextButton.icon(
@@ -463,61 +418,10 @@ class _TaskPageState extends State<TaskPage> {
       listenable: app,
       builder: (context, _) {
         _scheduleLogScroll(app);
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final inputs = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _stageCard(app),
-                const SizedBox(height: 14),
-                _inputCard(app),
-              ],
-            );
-            final workflow = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _workflowCard(app),
-                const SizedBox(height: 14),
-                _logCard(app),
-              ],
-            );
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1120),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        '任务',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      if (constraints.maxWidth >= 900)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: inputs),
-                            const SizedBox(width: 16),
-                            Expanded(child: workflow),
-                          ],
-                        )
-                      else ...[
-                        inputs,
-                        const SizedBox(height: 14),
-                        workflow,
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+        return KtPage(
+          title: '任务',
+          secondaryChildren: [_workflowCard(app), _logCard(app)],
+          children: [_stageCard(app), _inputCard(app)],
         );
       },
     );

@@ -406,15 +406,19 @@ class _ModelsPageState extends State<ModelsPage> {
         final sourceLangs = _ids(widget.app.tools['source_langs']);
         final targetLangs = _ids(widget.app.tools['target_langs']);
         final translators = _ids(widget.app.tools['translators']);
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
-          children: [
-            const Text(
-              '模型',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        return KtPage(
+          title: '模型',
+          footer: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: () => _save(),
+              child: const Text('保存'),
             ),
-            const SectionTitle('ASR'),
-            KtGroup(
+          ),
+          children: [
+            KtSection(
+              title: 'ASR',
+              icon: Icons.graphic_eq,
               children: [
                 KtComboField(
                   controller: asrModel,
@@ -444,11 +448,12 @@ class _ModelsPageState extends State<ModelsPage> {
                   labels: _labels(widget.app.tools['source_langs']),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  padding: const EdgeInsets.only(top: 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         TextButton.icon(
                           onPressed: queryingAsr ? null : _queryAsr,
@@ -463,7 +468,6 @@ class _ModelsPageState extends State<ModelsPage> {
                               : const Icon(Icons.refresh, size: 16),
                           label: Text(queryingAsr ? '正在扫描…' : '查询模型列表'),
                         ),
-                        const SizedBox(width: 8),
                         TextButton.icon(
                           onPressed: _openAsrDirectory,
                           icon: const Icon(Icons.folder_open, size: 16),
@@ -475,31 +479,20 @@ class _ModelsPageState extends State<ModelsPage> {
                 ),
               ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-              child: Row(
-                children: [
-                  Text(
-                    '本地 Llama',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: .5,
-                      color: paletteOf(context).muted,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Tooltip(
-                    message:
-                        '本项目以单模型模式运行 llama-server，同一时间只挂载一个 GGUF 模型。'
-                        '矫正和翻译选择“本地”时，将共同使用此处选择的模型。切换模型后，'
-                        'llama-server 会在下一次本地任务开始前重新启动。',
-                    child: Icon(Icons.error_outline, size: 16),
-                  ),
-                ],
+            KtSection(
+              title: '本地 Llama',
+              icon: Icons.memory_outlined,
+              action: Tooltip(
+                message:
+                    '本项目以单模型模式运行 llama-server，同一时间只挂载一个 GGUF 模型。'
+                    '矫正和翻译选择“本地”时，将共同使用此处选择的模型。切换模型后，'
+                    'llama-server 会在下一次本地任务开始前重新启动。',
+                child: Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: paletteOf(context).muted,
+                ),
               ),
-            ),
-            KtGroup(
               children: [
                 KtComboField(
                   controller: llamaModel,
@@ -516,11 +509,12 @@ class _ModelsPageState extends State<ModelsPage> {
                   trailing: Text('${_llama['status'] ?? 'stopped'}'),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  padding: const EdgeInsets.only(top: 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         TextButton.icon(
                           onPressed: queryingLlama ? null : _queryLlama,
@@ -535,7 +529,6 @@ class _ModelsPageState extends State<ModelsPage> {
                               : const Icon(Icons.refresh, size: 16),
                           label: Text(queryingLlama ? '正在扫描…' : '查询模型列表'),
                         ),
-                        const SizedBox(width: 8),
                         TextButton.icon(
                           onPressed: _openLlamaDirectory,
                           icon: const Icon(Icons.folder_open, size: 16),
@@ -547,8 +540,9 @@ class _ModelsPageState extends State<ModelsPage> {
                 ),
               ],
             ),
-            const SectionTitle('矫正'),
-            KtGroup(
+            KtSection(
+              title: '矫正',
+              icon: Icons.auto_fix_high,
               children: [
                 KtSelectField<String>(
                   label: '连接方式',
@@ -585,7 +579,7 @@ class _ModelsPageState extends State<ModelsPage> {
                     obscure: true,
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                    padding: const EdgeInsets.only(top: 4),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -608,8 +602,9 @@ class _ModelsPageState extends State<ModelsPage> {
                 ],
               ],
             ),
-            const SectionTitle('翻译'),
-            KtGroup(
+            KtSection(
+              title: '翻译',
+              icon: Icons.translate_outlined,
               children: [
                 KtSelectField<String>(
                   label: '连接方式',
@@ -676,7 +671,7 @@ class _ModelsPageState extends State<ModelsPage> {
                 ),
                 if (translateProvider == 'online')
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                    padding: const EdgeInsets.only(top: 4),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -697,14 +692,6 @@ class _ModelsPageState extends State<ModelsPage> {
                     ),
                   ),
               ],
-            ),
-            const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton(
-                onPressed: () => _save(),
-                child: const Text('保存'),
-              ),
             ),
           ],
         );

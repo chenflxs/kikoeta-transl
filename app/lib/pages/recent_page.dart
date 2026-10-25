@@ -123,9 +123,7 @@ class _RecentPageState extends State<RecentPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除这条最近记录？'),
-        content: const Text(
-          '将删除此任务的工作文件和缓存，并从最近列表移除记录。已导出的成果文件会保留。',
-        ),
+        content: const Text('将删除此任务的工作文件和缓存，并从最近列表移除记录。已导出的成果文件会保留。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -144,9 +142,9 @@ class _RecentPageState extends State<RecentPage> {
       await widget.app.engine.deleteRecentJob(id);
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('记录已删除，成果文件已保留')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('记录已删除，成果文件已保留')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -164,9 +162,7 @@ class _RecentPageState extends State<RecentPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除全部最近记录？'),
-        content: Text(
-          '将删除当前 $count 条记录对应的工作文件和缓存。已导出的成果文件会保留。',
-        ),
+        content: Text('将删除当前 $count 条记录对应的工作文件和缓存。已导出的成果文件会保留。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -185,9 +181,9 @@ class _RecentPageState extends State<RecentPage> {
       final deleted = await widget.app.engine.deleteAllRecentJobs();
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已删除 $deleted 条记录，成果文件已保留')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已删除 $deleted 条记录，成果文件已保留')));
     } catch (error) {
       if (mounted) await _refresh();
       if (!mounted) return;
@@ -220,44 +216,53 @@ class _RecentPageState extends State<RecentPage> {
   @override
   Widget build(BuildContext context) {
     final colors = paletteOf(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
+    return KtPage(
+      title: '最近',
+      description: '最近的翻译任务与 GalTransl 工作缓存。清理缓存不会删除导出的文件。',
+      columns: false,
+      actions: [
+        IconButton(
+          tooltip: '一键删除所有记录',
+          onPressed: _loading || _entries.isEmpty || _deleting != null
+              ? null
+              : _deleteAllEntries,
+          icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+        ),
+        IconButton(
+          tooltip: '刷新',
+          onPressed: _loading ? null : _refresh,
+          icon: const Icon(Icons.refresh, size: 20),
+        ),
+      ],
       children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                '最近',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        if (_loading)
+          LinearProgressIndicator(
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(999),
+          ),
+        if (_error != null)
+          KtSection(
+            title: '加载失败',
+            icon: Icons.error_outline,
+            children: [
+              Text(
+                '$_error',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colors.muted,
+                  height: 1.4,
+                ),
               ),
-            ),
-            IconButton(
-              tooltip: '一键删除所有记录',
-              onPressed: _loading || _entries.isEmpty || _deleting != null
-                  ? null
-                  : _deleteAllEntries,
-              icon: const Icon(Icons.delete_sweep_outlined),
-            ),
-            IconButton(
-              tooltip: '刷新',
-              onPressed: _loading ? null : _refresh,
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        ),
-        Text(
-          '最近的翻译任务与 GalTransl 工作缓存。清理缓存不会删除导出的文件。',
-          style: TextStyle(fontSize: 12, color: colors.muted),
-        ),
-        if (_loading) const LinearProgressIndicator(),
-        if (_error != null) ...[
-          const SizedBox(height: 16),
-          Text('加载失败：$_error', style: TextStyle(color: colors.muted)),
-        ],
-        if (!_loading && _error == null && _entries.isEmpty) ...[
-          const SizedBox(height: 24),
-          Text('暂无翻译缓存', style: TextStyle(color: colors.dim)),
-        ],
+            ],
+          ),
+        if (!_loading && _error == null && _entries.isEmpty)
+          KtSection(
+            title: '翻译记录',
+            icon: Icons.history,
+            children: [
+              Text('暂无翻译缓存', style: TextStyle(fontSize: 12, color: colors.dim)),
+            ],
+          ),
         for (final entry in _entries) _entryCard(entry),
       ],
     );
@@ -287,77 +292,84 @@ class _RecentPageState extends State<RecentPage> {
       'cancelled' => '已取消',
       _ => '旧任务',
     };
+    final statusColor = switch (entry['status']) {
+      'completed' => colors.green,
+      'failed' => colors.red,
+      _ => colors.dim,
+    };
     final title = files.isEmpty ? id : files.join('、');
-    return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: KtGroup(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_time('${entry['finished_at'] ?? entry['created_at'] ?? ''}')} '
-                        '· $status · $id$source · 缓存 ${_size(bytes)}',
-                        style: TextStyle(fontSize: 11, color: colors.dim),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: cacheCount == 0 || _deleting != null
-                      ? null
-                      : () => _deleteCache(entry),
-                  icon: const Icon(Icons.delete_outline, size: 17),
-                  label: Text(_deleting == id ? '清理中' : '删除缓存'),
-                ),
-                IconButton(
-                  tooltip: '删除记录（保留成果文件）',
-                  onPressed: _deleting != null ? null : () => _deleteEntry(entry),
-                  icon: const Icon(Icons.delete_forever_outlined),
-                ),
-              ],
+    return KtSection(
+      title: title,
+      icon: Icons.history,
+      action: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: statusColor.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          status,
+          style: TextStyle(
+            fontSize: 10.5,
+            color: statusColor,
+            fontFamily: 'SarasaUI',
+          ),
+        ),
+      ),
+      children: [
+        Text(
+          '${_time('${entry['finished_at'] ?? entry['created_at'] ?? ''}')} '
+          '· $id$source · 缓存 ${_size(bytes)}',
+          style: TextStyle(fontSize: 11.5, color: colors.muted, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              TextButton.icon(
+                onPressed: cacheCount == 0 || _deleting != null
+                    ? null
+                    : () => _deleteCache(entry),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: Text(_deleting == id ? '清理中' : '删除缓存'),
+              ),
+              IconButton(
+                tooltip: '删除记录（保留成果文件）',
+                onPressed: _deleting != null ? null : () => _deleteEntry(entry),
+                style: IconButton.styleFrom(foregroundColor: colors.red),
+                icon: const Icon(Icons.delete_forever_outlined, size: 20),
+              ),
+            ],
+          ),
+        ),
+        if (outputs.isEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '暂无可显示的成品歌词',
+              style: TextStyle(fontSize: 12, color: colors.dim),
             ),
           ),
-          if (outputs.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '暂无可显示的成品歌词',
-                  style: TextStyle(fontSize: 12, color: colors.dim),
-                ),
-              ),
+        for (var i = 0; i < outputs.length; i++)
+          KtRow(
+            icon: Icons.description_outlined,
+            title: p.basename('${outputs[i]['path'] ?? ''}'),
+            sub: '${outputs[i]['path'] ?? ''}',
+            showDivider: i != outputs.length - 1,
+            onTap: outputs[i]['exists'] == true
+                ? () => _openFile('${outputs[i]['path']}')
+                : null,
+            trailing: Text(
+              outputs[i]['exists'] == true ? '打开' : '文件已移走',
+              style: TextStyle(fontSize: 11, color: colors.dim),
             ),
-          for (var i = 0; i < outputs.length; i++)
-            if (outputs[i] is Map)
-              KtRow(
-                icon: Icons.description_outlined,
-                title: p.basename('${outputs[i]['path'] ?? ''}'),
-                sub: '${outputs[i]['path'] ?? ''}',
-                showDivider: i != outputs.length - 1,
-                onTap: outputs[i]['exists'] == true
-                    ? () => _openFile('${outputs[i]['path']}')
-                    : null,
-                trailing: Text(
-                  outputs[i]['exists'] == true ? '打开' : '文件已移走',
-                  style: TextStyle(fontSize: 11, color: colors.dim),
-                ),
-              ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

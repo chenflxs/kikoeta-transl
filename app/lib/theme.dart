@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+const kAppFontFamily = 'SarasaUI';
+
 /// 与 HTML demo 一致的蓝色系配色
 class AppColors {
   AppColors._();
@@ -116,7 +118,7 @@ ThemeData buildTheme(Brightness brightness) {
     brightness: brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: p.bg,
-    fontFamily: 'SarasaUI',
+    fontFamily: kAppFontFamily,
     appBarTheme: AppBarTheme(
       backgroundColor: p.bg,
       foregroundColor: p.text,
@@ -138,10 +140,49 @@ ThemeData buildTheme(Brightness brightness) {
       titleLarge: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2),
       bodyMedium: TextStyle(height: 1.4),
     ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: p.accent,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(0, 44),
+        textStyle: const TextStyle(
+          fontFamily: kAppFontFamily,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: p.accent,
+        minimumSize: const Size(0, 44),
+        side: BorderSide(color: p.line),
+        textStyle: const TextStyle(
+          fontFamily: kAppFontFamily,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: p.muted,
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        textStyle: const TextStyle(fontFamily: kAppFontFamily, fontSize: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+      ),
+    ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: p.toast,
-      contentTextStyle: TextStyle(fontSize: 12.5, color: p.text),
+      contentTextStyle: TextStyle(
+        fontFamily: kAppFontFamily,
+        fontSize: 12.5,
+        color: p.text,
+      ),
       actionTextColor: p.accent,
       disabledActionTextColor: p.dim,
       elevation: 8,
@@ -157,7 +198,11 @@ ThemeData buildTheme(Brightness brightness) {
       color: p.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 16,
-      textStyle: TextStyle(color: p.muted, fontSize: 13),
+      textStyle: TextStyle(
+        fontFamily: kAppFontFamily,
+        color: p.muted,
+        fontSize: 13,
+      ),
     ),
   );
 }

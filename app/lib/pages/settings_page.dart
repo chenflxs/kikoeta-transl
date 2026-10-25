@@ -352,15 +352,23 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final tools = widget.app.tools;
     final p = paletteOf(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
-      children: [
-        const Text(
-          '设置',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+    return KtPage(
+      title: '设置',
+      footer: Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: 180,
+          child: FilledButton.icon(
+            onPressed: () => _save(),
+            icon: const Icon(Icons.save_outlined, size: 18),
+            label: const Text('保存'),
+          ),
         ),
-        const SectionTitle('工具'),
-        KtGroup(
+      ),
+      children: [
+        KtSection(
+          title: '工具',
+          icon: Icons.handyman_outlined,
           children: [
             KtRow(
               icon: Icons.movie_outlined,
@@ -390,8 +398,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
-        const SectionTitle('路径'),
-        KtGroup(
+        KtSection(
+          title: '路径',
+          icon: Icons.folder_open_outlined,
           children: [
             KtField(controller: ffmpeg, label: 'ffmpeg 路径'),
             KtField(controller: crispasr, label: 'CrispASR 目录'),
@@ -401,7 +410,7 @@ class _SettingsPageState extends State<SettingsPage> {
               hint: 'http://127.0.0.1:7890',
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              padding: const EdgeInsets.only(top: 4),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
@@ -415,8 +424,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
-        const SectionTitle('界面与服务'),
-        KtGroup(
+        KtSection(
+          title: '界面与服务',
+          icon: Icons.palette_outlined,
           children: [
             KtRow(
               // 图标随当前主题模式变化，和 kikoeta 的设置页一致
@@ -459,7 +469,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   // 视觉高度收窄到与设置页其它内联控件齐平
                   minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
                   textStyle: const WidgetStatePropertyAll(
-                    TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    TextStyle(
+                      fontFamily: 'SarasaUI',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   padding: const WidgetStatePropertyAll(
                     EdgeInsets.symmetric(horizontal: 10),
@@ -480,8 +494,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
-        const SectionTitle('远程身份验证'),
-        KtGroup(
+        KtSection(
+          title: '远程身份验证',
+          icon: Icons.lock_outline,
           children: [
             KtField(controller: remoteUsername, label: '用户名'),
             KtField(controller: remotePassword, label: '密码', obscure: true),
@@ -497,41 +512,34 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: () => _save(),
-            child: const Text('保存'),
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Divider(),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              TextButton.icon(
-                onPressed: _openRepository,
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('项目仓库'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _checkingUpdate ? null : _checkForUpdate,
-                icon: _checkingUpdate
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.system_update_alt),
-                label: Text(_checkingUpdate ? '正在检查…' : '检查更新'),
-              ),
-            ],
-          ),
+        KtSection(
+          title: '关于',
+          icon: Icons.info_outline,
+          children: [
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: _openRepository,
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('项目仓库'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _checkingUpdate ? null : _checkForUpdate,
+                  icon: _checkingUpdate
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.system_update_alt),
+                  label: Text(_checkingUpdate ? '正在检查…' : '检查更新'),
+                ),
+              ],
+            ),
+          ],
         ),
       ],
     );

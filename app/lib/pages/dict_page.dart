@@ -102,46 +102,36 @@ class DictPage extends StatelessWidget {
               if (item['category'] == 'post') item,
           ],
         };
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
-          children: [
-            const Text(
-              '字典',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '直接使用 GalTransl 内置 Dict。点击条目会在 kikoeta-transl 内置编辑器中打开。',
-              style: TextStyle(fontSize: 12, color: p.muted),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () async {
-                  try {
-                    await app.refreshTools();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已刷新，发现 ${_dicts().length} 个字典'),
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text('刷新失败：$e')));
-                    }
+        return KtPage(
+          title: '字典',
+          description: '直接使用 GalTransl 内置 Dict。点击条目会在 kikoeta-transl 内置编辑器中打开。',
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                try {
+                  await app.refreshTools();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('已刷新，发现 ${_dicts().length} 个字典')),
+                    );
                   }
-                },
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('刷新字典'),
-              ),
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('刷新失败：$e')));
+                  }
+                }
+              },
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('刷新字典'),
             ),
-            if (dicts.isEmpty) ...[
-              const SectionTitle('GalTransl Dict'),
-              KtGroup(
+          ],
+          children: [
+            if (dicts.isEmpty)
+              KtSection(
+                title: 'GalTransl Dict',
+                icon: Icons.menu_book_outlined,
                 children: [
                   KtRow(
                     icon: Icons.menu_book_outlined,
@@ -151,11 +141,11 @@ class DictPage extends StatelessWidget {
                   ),
                 ],
               ),
-            ],
             for (final category in ['pre', 'gpt', 'post'])
-              if ((groups[category] ?? const []).isNotEmpty) ...[
-                SectionTitle(_title(category)),
-                KtGroup(
+              if ((groups[category] ?? const []).isNotEmpty)
+                KtSection(
+                  title: _title(category),
+                  icon: Icons.menu_book_outlined,
                   children: [
                     for (var i = 0; i < groups[category]!.length; i++)
                       KtRow(
@@ -173,7 +163,6 @@ class DictPage extends StatelessWidget {
                       ),
                   ],
                 ),
-              ],
           ],
         );
       },
@@ -237,18 +226,22 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
   Widget build(BuildContext context) {
     final p = paletteOf(context);
     return Dialog(
+      backgroundColor: p.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
         width: 900,
         height: 680,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 widget.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 17,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -269,15 +262,27 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 13,
-                    height: 1.35,
+                    height: 1.65,
                   ),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: p.surface2,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(11),
+                      borderSide: BorderSide(color: p.line),
                     ),
-                    contentPadding: const EdgeInsets.all(14),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(11),
+                      borderSide: BorderSide(color: p.line),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(11),
+                      borderSide: BorderSide(color: p.accent),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
                   ),
                 ),
               ),
@@ -289,28 +294,32 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
                 ),
               ],
               const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: saving
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('取消'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: saving ? null : _save,
-                    icon: saving
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save_outlined, size: 17),
-                    label: Text(saving ? '保存中…' : '保存'),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      child: const Text('取消'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: saving ? null : _save,
+                      icon: saving
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_outlined, size: 17),
+                      label: Text(saving ? '保存中…' : '保存'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

@@ -482,20 +482,24 @@ class _ParamsPageState extends State<ParamsPage> {
   @override
   Widget build(BuildContext context) {
     final p = paletteOf(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
+    return KtPage(
+      title: '听写参数',
+      description: '媒体听写使用的 CrispASR 参数。字幕输入不会走到这一步。',
+      footer: Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: 180,
+          child: FilledButton.icon(
+            onPressed: () => _save(),
+            icon: const Icon(Icons.save_outlined, size: 18),
+            label: const Text('保存'),
+          ),
+        ),
+      ),
       children: [
-        const Text(
-          '听写参数',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '媒体听写使用的 CrispASR 参数。字幕输入不会走到这一步。',
-          style: TextStyle(fontSize: 12, color: p.muted),
-        ),
-        const SectionTitle('高级模板'),
-        KtGroup(
+        KtSection(
+          title: '高级模板',
+          icon: Icons.terminal,
           children: [
             KtField(
               controller: template,
@@ -504,14 +508,14 @@ class _ParamsPageState extends State<ParamsPage> {
               maxLines: 7,
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
               child: Text(
                 '手动编辑模板后保存会解析可编辑参数；未知参数会保留在模板中。',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: p.muted),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              padding: const EdgeInsets.only(top: 4),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -523,8 +527,9 @@ class _ParamsPageState extends State<ParamsPage> {
             ),
           ],
         ),
-        const SectionTitle('基础与分段'),
-        KtGroup(
+        KtSection(
+          title: '基础与分段',
+          icon: Icons.graphic_eq,
           children: [
             _field('threads', '线程数', hint: '4'),
             _field('processors', '处理器数', hint: '1'),
@@ -566,8 +571,9 @@ class _ParamsPageState extends State<ParamsPage> {
             ),
           ],
         ),
-        const SectionTitle('VAD 与标点'),
-        KtGroup(
+        KtSection(
+          title: 'VAD 与标点',
+          icon: Icons.multitrack_audio,
           children: [
             _field('vad_max_speech', '最大语音时长（秒）', hint: '6'),
             _field('vad_min_silence', '最小静音（毫秒）', hint: '300'),
@@ -601,8 +607,9 @@ class _ParamsPageState extends State<ParamsPage> {
             _field('flush_after', '每 N 段刷新 SRT', hint: '1 表示逐段输出日志'),
           ],
         ),
-        const SectionTitle('解码'),
-        KtGroup(
+        KtSection(
+          title: '解码',
+          icon: Icons.tune_outlined,
           children: [
             _field('max_new_tokens', 'max-new-tokens', hint: '512'),
             _field('frequency_penalty', 'frequency-penalty', hint: '0.0'),
@@ -630,8 +637,9 @@ class _ParamsPageState extends State<ParamsPage> {
             ),
           ],
         ),
-        const SectionTitle('高级解码选项'),
-        KtGroup(
+        KtSection(
+          title: '高级解码选项',
+          icon: Icons.auto_fix_high,
           children: [
             KtSwitchRow(
               icon: Icons.text_format,
@@ -643,8 +651,9 @@ class _ParamsPageState extends State<ParamsPage> {
             ),
           ],
         ),
-        const SectionTitle('设备'),
-        KtGroup(
+        KtSection(
+          title: '设备',
+          icon: Icons.memory_outlined,
           children: [
             KtSwitchRow(
               icon: Icons.memory_outlined,
@@ -668,14 +677,6 @@ class _ParamsPageState extends State<ParamsPage> {
               showDivider: false,
             ),
           ],
-        ),
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: () => _save(),
-            child: const Text('保存'),
-          ),
         ),
       ],
     );

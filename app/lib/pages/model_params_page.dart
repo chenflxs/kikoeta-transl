@@ -202,21 +202,17 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final p = paletteOf(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
+    return KtPage(
+      title: '模型参数',
+      description: '配置矫正模型与翻译模型的提示词及请求参数。',
+      footer: Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton(onPressed: () => _save(), child: const Text('保存')),
+      ),
       children: [
-        const Text(
-          '模型参数',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '配置矫正模型与翻译模型的提示词及请求参数。',
-          style: TextStyle(fontSize: 12, color: p.muted),
-        ),
-        const SectionTitle('矫正'),
-        KtGroup(
+        KtSection(
+          title: '矫正',
+          icon: Icons.auto_fix_high,
           children: [
             KtField(
               controller: correctPrompt,
@@ -240,13 +236,15 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
               title: '启用思考/推理',
               sub: '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
               value: correctThinkingEnabled,
+              showDivider: false,
               onChanged: (value) =>
                   setState(() => correctThinkingEnabled = value),
             ),
           ],
         ),
-        const SectionTitle('翻译'),
-        KtGroup(
+        KtSection(
+          title: '翻译',
+          icon: Icons.translate_outlined,
           children: [
             KtSelectField<String>(
               label: 'Prompt 工作模式',
@@ -278,14 +276,6 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
               showDivider: false,
             ),
           ],
-        ),
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: () => _save(),
-            child: const Text('保存'),
-          ),
         ),
       ],
     );

@@ -7,26 +7,219 @@ Palette paletteOf(BuildContext context) =>
     ? AppColors.dark
     : AppColors.light;
 
-class KtGroup extends StatelessWidget {
+/// Layout and card spacing follow Kikoeta's dictation translation page.
+class KtPage extends StatelessWidget {
+  final String title;
+  final String? description;
+  final List<Widget> actions;
   final List<Widget> children;
-  const KtGroup({super.key, required this.children});
+  final List<Widget>? secondaryChildren;
+  final Widget? footer;
+  final bool columns;
+
+  const KtPage({
+    super.key,
+    required this.title,
+    this.description,
+    this.actions = const [],
+    required this.children,
+    this.secondaryChildren,
+    this.footer,
+    this.columns = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     final p = paletteOf(context);
-    return AnimatedContainer(
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: p.line),
-      ),
-      child: Column(children: children),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final allChildren = [...children, ...?secondaryChildren];
+        final wide =
+            columns && constraints.maxWidth >= 900 && allChildren.length > 1;
+        Widget column(Iterable<Widget> items) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (index, item) in items.indexed) ...[
+              if (index != 0) const SizedBox(height: 14),
+              item,
+            ],
+          ],
+        );
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1120),
+              child: ListView(
+                primary: false,
+                padding: EdgeInsets.zero,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            color: p.text,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (actions.isNotEmpty) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: actions,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (description != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      description!,
+                      style: TextStyle(
+                        color: p.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  if (wide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: column(
+                            secondaryChildren != null
+                                ? children
+                                : [
+                                    for (var i = 0; i < children.length; i += 2)
+                                      children[i],
+                                  ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: column(
+                            secondaryChildren ??
+                                [
+                                  for (var i = 1; i < children.length; i += 2)
+                                    children[i],
+                                ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    for (final (index, item) in allChildren.indexed) ...[
+                      if (index != 0) const SizedBox(height: 14),
+                      item,
+                    ],
+                  if (footer != null) ...[const SizedBox(height: 14), footer!],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
+}
+
+class KtSection extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+  final Widget? action;
+
+  const KtSection({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.children,
+    this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = paletteOf(context);
+    return Material(
+      color: p.surface,
+      animationDuration: Duration.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: p.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 19, color: p.accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: p.text,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                ?action,
+              ],
+            ),
+            const SizedBox(height: 14),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+InputDecoration ktInputDecoration(
+  BuildContext context,
+  String label, {
+  String? hint,
+}) {
+  final p = paletteOf(context);
+  OutlineInputBorder border(Color color) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(11),
+    borderSide: BorderSide(color: color),
+  );
+  return InputDecoration(
+    labelText: label,
+    labelStyle: TextStyle(
+      fontFamily: 'SarasaUI',
+      fontSize: 11.5,
+      color: p.muted,
+    ),
+    hintText: hint,
+    hintStyle: TextStyle(fontFamily: 'SarasaUI', fontSize: 12, color: p.dim),
+    filled: true,
+    fillColor: p.surface2,
+    border: border(p.line),
+    enabledBorder: border(p.line),
+    disabledBorder: border(p.line),
+    focusedBorder: border(p.accent),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+  );
 }
 
 class KtRow extends StatelessWidget {
@@ -51,7 +244,7 @@ class KtRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = paletteOf(context);
     final content = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: showDivider
           ? BoxDecoration(
               border: Border(bottom: BorderSide(color: p.line)),
@@ -89,7 +282,7 @@ class KtRow extends StatelessWidget {
               ],
             ),
           ),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
     );
@@ -136,28 +329,6 @@ class KtSwitchRow extends StatelessWidget {
   }
 }
 
-class SectionTitle extends StatelessWidget {
-  final String text;
-  const SectionTitle(this.text, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = paletteOf(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          letterSpacing: .5,
-          color: p.muted,
-        ),
-      ),
-    );
-  }
-}
-
 class KtField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -178,28 +349,13 @@ class KtField extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = paletteOf(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: TextField(
         controller: controller,
         obscureText: obscure,
         maxLines: obscure ? 1 : maxLines,
-        style: const TextStyle(fontSize: 13),
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          labelStyle: TextStyle(color: p.dim, fontSize: 12),
-          hintStyle: TextStyle(color: p.dim, fontSize: 12),
-          filled: true,
-          fillColor: p.surface2,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: p.line),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: p.line),
-          ),
-        ),
+        style: TextStyle(fontFamily: 'SarasaUI', fontSize: 13, color: p.text),
+        decoration: ktInputDecoration(context, label, hint: hint),
       ),
     );
   }
@@ -292,7 +448,7 @@ class _KtComboFieldState extends State<KtComboField> {
     final visible = _visible();
     final hasOptions = widget.options.isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: MenuAnchor(
         controller: _menu,
         style: MenuStyle(
@@ -369,71 +525,43 @@ class _KtComboFieldState extends State<KtComboField> {
         ],
         builder: (_, menuController, _) => TextField(
           controller: widget.controller,
-          style: TextStyle(
-            fontFamily: 'SarasaUI',
-            color: p.text,
-            fontSize: 13.5,
-            fontWeight: FontWeight.w500,
-          ),
+          style: TextStyle(fontFamily: 'SarasaUI', color: p.text, fontSize: 13),
           onChanged: (value) {
             widget.onChanged?.call(value);
             if (menuController.isOpen) setState(() {});
           },
-          decoration: InputDecoration(
-            labelText: widget.label,
-            hintText: widget.hint ?? (hasOptions ? '输入或从列表选择' : null),
-            labelStyle: TextStyle(
-              color: p.dim,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-            ),
-            floatingLabelStyle: TextStyle(
-              color: p.accent,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-            ),
-            hintStyle: TextStyle(color: p.dim, fontSize: 12.5),
-            filled: true,
-            fillColor: p.surface2,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 14,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(color: p.line),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(color: p.line),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(color: p.accent, width: 1.4),
-            ),
-            suffixIcon: IconButton(
-              tooltip: hasOptions ? '打开列表' : '暂无预置选项，可直接输入',
-              iconSize: 21,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              onPressed: hasOptions
-                  ? () {
-                      if (menuController.isOpen) {
-                        menuController.close();
-                      } else {
-                        menuController.open();
-                      }
-                      setState(() {});
-                    }
-                  : null,
-              icon: Icon(
-                menuController.isOpen
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: hasOptions ? p.muted : p.dim,
+          decoration:
+              ktInputDecoration(
+                context,
+                widget.label,
+                hint: widget.hint ?? (hasOptions ? '输入或从列表选择' : null),
+              ).copyWith(
+                suffixIcon: IconButton(
+                  tooltip: hasOptions ? '打开列表' : '暂无预置选项，可直接输入',
+                  iconSize: 21,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  onPressed: hasOptions
+                      ? () {
+                          if (menuController.isOpen) {
+                            menuController.close();
+                          } else {
+                            menuController.open();
+                          }
+                          setState(() {});
+                        }
+                      : null,
+                  icon: Icon(
+                    menuController.isOpen
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: hasOptions ? p.muted : p.dim,
+                  ),
+                ),
               ),
-            ),
-          ),
         ),
       ),
     );
@@ -461,34 +589,9 @@ class KtSelectField<T> extends StatelessWidget {
     final p = paletteOf(context);
     final current = values.contains(value) ? value : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(
-            color: p.dim,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-          ),
-          floatingLabelStyle: TextStyle(
-            color: p.accent,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-          ),
-          filled: true,
-          fillColor: p.surface2,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: BorderSide(color: p.line),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: BorderSide(color: p.line),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: BorderSide(color: p.accent, width: 1.4),
-          ),
+        decoration: ktInputDecoration(context, label).copyWith(
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 6,
@@ -503,13 +606,12 @@ class KtSelectField<T> extends StatelessWidget {
             dropdownColor: p.surface,
             focusColor: Colors.transparent,
             elevation: 12,
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(11),
             itemHeight: 48,
             menuMaxHeight: 360,
             style: TextStyle(
               fontFamily: 'SarasaUI',
-              fontSize: 13.5,
-              fontWeight: FontWeight.w500,
+              fontSize: 13,
               color: p.text,
             ),
             items: [
@@ -522,8 +624,7 @@ class KtSelectField<T> extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'SarasaUI',
                       color: p.text,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
                     ),
                   ),
                 ),

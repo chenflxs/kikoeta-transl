@@ -237,48 +237,50 @@ class _OutputPageState extends State<OutputPage> {
     if (!_presets.any((item) => item.$1 == preset)) {
       preset = 'target_lrc';
     }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 24),
-      children: [
-        const Text(
-          '输出',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+    final p = paletteOf(context);
+    return KtPage(
+      title: '输出',
+      footer: Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton.icon(
+          onPressed: () => _save(),
+          icon: const Icon(Icons.save_outlined, size: 18),
+          label: const Text('保存'),
         ),
-        const SectionTitle('文件'),
-        KtGroup(
+      ),
+      children: [
+        KtSection(
+          title: '文件',
+          icon: Icons.folder_outlined,
           children: [
             KtField(
               controller: directory,
               label: '输出目录',
               hint: '留空则输出到源文件所在目录',
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    TextButton(
-                      onPressed: () async {
-                        final dir = await FilePicker.platform
-                            .getDirectoryPath();
-                        if (dir != null) setState(() => directory.text = dir);
-                      },
-                      child: const Text('选择目录'),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => directory.text = ''),
-                      child: const Text('使用源文件目录'),
-                    ),
-                  ],
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: () async {
+                    final dir = await FilePicker.platform.getDirectoryPath();
+                    if (dir != null) setState(() => directory.text = dir);
+                  },
+                  icon: const Icon(Icons.folder_open_outlined, size: 18),
+                  label: const Text('选择目录'),
                 ),
-              ),
+                TextButton(
+                  onPressed: () => setState(() => directory.text = ''),
+                  child: const Text('使用源文件目录'),
+                ),
+              ],
             ),
           ],
         ),
-        const SectionTitle('格式'),
-        KtGroup(
+        KtSection(
+          title: '格式',
+          icon: Icons.subtitles_outlined,
           children: [
             KtSelectField<String>(
               label: '输出格式',
@@ -289,8 +291,9 @@ class _OutputPageState extends State<OutputPage> {
             ),
           ],
         ),
-        const SectionTitle('Kikoeta-LLS'),
-        KtGroup(
+        KtSection(
+          title: 'Kikoeta-LLS',
+          icon: Icons.cloud_upload_outlined,
           children: [
             KtSwitchRow(
               icon: Icons.cloud_upload_outlined,
@@ -300,97 +303,107 @@ class _OutputPageState extends State<OutputPage> {
               onChanged: (value) => setState(() => llsSync = value),
               showDivider: false,
             ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        ExcludeFocus(
-          excluding: _pushingCache,
-          child: AbsorbPointer(
-            absorbing: _pushingCache,
-            child: KtGroup(
-              children: [
-                KtField(
-                  controller: llsUrl,
-                  label: 'Kikoeta-LLS 地址（HTTP/HTTPS）',
-                  hint: '留空使用本机 http://127.0.0.1:2378',
-                ),
-                KtSelectField<String>(
-                  label: '上传验证方式',
-                  value: llsAuthMode,
-                  values: const ['key', 'basic'],
-                  labelOf: (value) => value == 'key' ? '12 位密钥' : '独立账号和密码',
-                  onChanged: (value) => setState(() => llsAuthMode = value),
-                ),
-                if (llsAuthMode == 'key')
-                  KtField(
-                    controller: llsKey,
-                    label: '上传密钥',
-                    hint: '在 Kikoeta-LLS 设置页生成或手动设置 12 位密钥',
-                    obscure: true,
-                  )
-                else ...[
-                  KtField(controller: llsUsername, label: '上传账号'),
-                  KtField(
-                    controller: llsPassword,
-                    label: '上传密码',
-                    obscure: true,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        KtGroup(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '将最近 5 次 Kikoeta 任务中保留的 LRC 缓存推送到 LLS。'
-                    '使用上方地址和验证配置，无需开启自动同步。'
-                    '同名歌词会覆盖，推送后保留本地缓存。',
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _pushingCache ? null : _pushCache,
-                    icon: const Icon(Icons.cloud_upload_outlined),
-                    label: Text(_pushingCache ? '正在推送…' : '将缓存推送到 LLS'),
-                  ),
-                  if (_pushingCache) ...[
-                    const SizedBox(height: 10),
-                    const LinearProgressIndicator(),
-                  ],
-                  if (_cachePushStatus.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(_cachePushStatus),
-                  ],
-                  if (_cachePushErrors.isNotEmpty)
-                    Material(
-                      type: MaterialType.transparency,
-                      child: ExpansionTile(
-                        tilePadding: EdgeInsets.zero,
-                        title: const Text('查看失败详情'),
-                        children: [
-                          for (final error in _cachePushErrors)
-                            ListTile(title: SelectableText(error)),
-                        ],
-                      ),
+            const SizedBox(height: 6),
+            ExcludeFocus(
+              excluding: _pushingCache,
+              child: AbsorbPointer(
+                absorbing: _pushingCache,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    KtField(
+                      controller: llsUrl,
+                      label: 'Kikoeta-LLS 地址（HTTP/HTTPS）',
+                      hint: '留空使用本机 http://127.0.0.1:2378',
                     ),
-                ],
+                    KtSelectField<String>(
+                      label: '上传验证方式',
+                      value: llsAuthMode,
+                      values: const ['key', 'basic'],
+                      labelOf: (value) => value == 'key' ? '12 位密钥' : '独立账号和密码',
+                      onChanged: (value) => setState(() => llsAuthMode = value),
+                    ),
+                    if (llsAuthMode == 'key')
+                      KtField(
+                        controller: llsKey,
+                        label: '上传密钥',
+                        hint: '在 Kikoeta-LLS 设置页生成或手动设置 12 位密钥',
+                        obscure: true,
+                      )
+                    else ...[
+                      KtField(controller: llsUsername, label: '上传账号'),
+                      KtField(
+                        controller: llsPassword,
+                        label: '上传密码',
+                        obscure: true,
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: () => _save(),
-            child: const Text('保存'),
-          ),
+        KtSection(
+          title: '歌词缓存',
+          icon: Icons.cached_outlined,
+          children: [
+            Text(
+              '将最近 5 次 Kikoeta 任务中保留的 LRC 缓存推送到 LLS。'
+              '使用上方地址和验证配置，无需开启自动同步。'
+              '同名歌词会覆盖，推送后保留本地缓存。',
+              style: TextStyle(fontSize: 12, color: p.muted, height: 1.4),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _pushingCache ? null : _pushCache,
+              icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+              label: Text(_pushingCache ? '正在推送…' : '将缓存推送到 LLS'),
+            ),
+            if (_pushingCache) ...[
+              const SizedBox(height: 10),
+              LinearProgressIndicator(
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ],
+            if (_cachePushStatus.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                _cachePushStatus,
+                style: TextStyle(fontSize: 12, color: p.text, height: 1.4),
+              ),
+            ],
+            if (_cachePushErrors.isNotEmpty)
+              Material(
+                type: MaterialType.transparency,
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(
+                    '查看失败详情',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: p.text,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  children: [
+                    for (final error in _cachePushErrors)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: SelectableText(
+                          error,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: p.muted,
+                            height: 1.65,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ],
     );

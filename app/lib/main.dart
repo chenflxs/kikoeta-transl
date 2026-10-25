@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:window_manager/window_manager.dart';
 
@@ -19,6 +20,7 @@ import 'pages/task_page.dart';
 import 'services/theme_reveal.dart';
 import 'theme.dart';
 import 'widgets.dart';
+import 'widgets/windows_frame.dart';
 
 final appState = AppState();
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -26,6 +28,9 @@ final navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+  if (Platform.isWindows) {
+    await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+  }
   await windowManager.setPreventClose(true);
   final options = WindowOptions(
     size: Size(1180, 760),
@@ -307,9 +312,9 @@ class _KtAppState extends State<KtApp>
       _closing = false;
       final context = navigatorKey.currentContext;
       if (context != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('设置保存失败，尚未退出：$error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('设置保存失败，尚未退出：$error')));
       }
       return;
     }
@@ -353,7 +358,10 @@ class _KtAppState extends State<KtApp>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                child ?? const SizedBox.shrink(),
+                if (Platform.isWindows)
+                  KtWindowsFrame(child: child ?? const SizedBox.shrink())
+                else
+                  child ?? const SizedBox.shrink(),
                 if (_revealImage != null)
                   Positioned.fill(
                     child: IgnorePointer(
@@ -394,11 +402,14 @@ class _KtAppState extends State<KtApp>
 }
 
 class Shell extends StatelessWidget {
-  const Shell({super.key});
+  const Shell({super.key, this.app});
+
+  final AppState? app;
+  AppState get _app => app ?? appState;
 
   void _selectTab(BuildContext context, int index) {
     unawaited(
-      appState.selectTab(index).catchError((Object error) {
+      _app.selectTab(index).catchError((Object error) {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
@@ -412,7 +423,7 @@ class Shell extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = paletteOf(context);
     return ListenableBuilder(
-      listenable: appState.tabNotifier,
+      listenable: _app.tabNotifier,
       builder: (context, _) {
         return Scaffold(
           body: Row(
@@ -420,7 +431,7 @@ class Shell extends StatelessWidget {
               SizedBox(
                 width: 88,
                 child: NavigationRail(
-                  selectedIndex: appState.tab < 7 ? appState.tab : null,
+                  selectedIndex: _app.tab < 7 ? _app.tab : null,
                   onDestinationSelected: (index) => _selectTab(context, index),
                   scrollable: true,
                   trailingAtBottom: true,
@@ -436,18 +447,18 @@ class Shell extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              appState.tab == 7
+                              _app.tab == 7
                                   ? Icons.history
                                   : Icons.history_outlined,
-                              color: appState.tab == 7 ? p.accent : p.dim,
+                              color: _app.tab == 7 ? p.accent : p.dim,
                             ),
                             const SizedBox(height: 3),
                             Text(
                               '最近',
                               style: TextStyle(
-                                color: appState.tab == 7 ? p.accent : p.dim,
+                                color: _app.tab == 7 ? p.accent : p.dim,
                                 fontSize: 12,
-                                fontWeight: appState.tab == 7
+                                fontWeight: _app.tab == 7
                                     ? FontWeight.w700
                                     : FontWeight.normal,
                               ),
@@ -462,11 +473,13 @@ class Shell extends StatelessWidget {
                   selectedIconTheme: IconThemeData(color: p.accent),
                   unselectedIconTheme: IconThemeData(color: p.dim),
                   selectedLabelTextStyle: TextStyle(
+                    fontFamily: kAppFontFamily,
                     color: p.accent,
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                   ),
                   unselectedLabelTextStyle: TextStyle(
+                    fontFamily: kAppFontFamily,
                     color: p.dim,
                     fontSize: 12,
                   ),
@@ -514,21 +527,18 @@ class Shell extends StatelessWidget {
               Expanded(
                 child: ColoredBox(
                   color: p.bg,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-                    child: _AnimatedPageStack(
-                      index: appState.tab,
-                      children: [
-                        TaskPage(app: appState),
-                        ModelsPage(app: appState),
-                        ParamsPage(app: appState),
-                        ModelParamsPage(app: appState),
-                        DictPage(app: appState),
-                        OutputPage(app: appState),
-                        SettingsPage(app: appState),
-                        RecentPage(app: appState),
-                      ],
-                    ),
+                  child: _AnimatedPageStack(
+                    index: _app.tab,
+                    children: [
+                      TaskPage(app: _app),
+                      ModelsPage(app: _app),
+                      ParamsPage(app: _app),
+                      ModelParamsPage(app: _app),
+                      DictPage(app: _app),
+                      OutputPage(app: _app),
+                      SettingsPage(app: _app),
+                      RecentPage(app: _app),
+                    ],
                   ),
                 ),
               ),

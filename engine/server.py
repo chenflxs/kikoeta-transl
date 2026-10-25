@@ -189,7 +189,10 @@ class Handler(BaseHTTPRequestHandler):
                     cleanup_paths=cleanup_paths,
                     cache_context=_remote_cache_context(payload),
                 )
-                job = MANAGER.create(request, source="kikoeta")
+                job = MANAGER.create(
+                    request, source="kikoeta",
+                    resume_existing=payload.get("resume_existing") is not False,
+                )
             except RuntimeError as exc:
                 cleanup_intermediates(*cleanup_paths)
                 self._error(409, str(exc))
@@ -281,11 +284,16 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) != len(prefix) + 2 or parts[:len(prefix)] != prefix:
             return False
         job_id, action = parts[-2:]
-        if action not in {"cancel", "preempt"}:
+        if action not in {"cancel", "preempt", "resume"}:
             return False
         try:
+            # Drain the POST body before replying. Closing an HTTP/1.0 socket
+            # with unread incoming bytes can reset an otherwise valid response.
+            self._read_json()
             if action == "preempt":
                 job = MANAGER.preempt(job_id)
+            elif action == "resume":
+                job = MANAGER.resume(job_id)
             else:
                 job = MANAGER.cancel(job_id)
         except KeyError:

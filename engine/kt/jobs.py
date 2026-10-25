@@ -112,7 +112,7 @@ class JobManager:
             except (KeyError, TypeError, ValueError):
                 continue
 
-    def create(self, request: JobRequest, *, source: str = "desktop") -> Job:
+    def create(self, request: JobRequest, *, source: str = "desktop", resume_existing: bool = True) -> Job:
         files = [path for path in request.files if str(path).strip()]
         if not files:
             raise ValueError("没有输入文件")
@@ -127,13 +127,28 @@ class JobManager:
         )
         with self._lock:
             self._ensure_available()
-            key = _resume_key(candidate)
-            job = next((item for item in self._jobs.values()
-                        if item.status == "paused" and key and _resume_key(item) == key), candidate)
+            job = candidate
+            if resume_existing:
+                key = _resume_key(candidate)
+                job = next((item for item in self._jobs.values()
+                            if item.status == "paused" and key and _resume_key(item) == key), candidate)
             self._repair_results(job)
             if job is not candidate:
                 self._reuse_uploads(job, candidate)
             self._jobs[job.job_id] = job
+            self._start(job)
+            return job
+
+    def resume(self, job_id: str) -> Job:
+        with self._lock:
+            job = self._require(job_id)
+            self._ensure_available()
+            if job.status != "paused":
+                raise RuntimeError("只有已暂存的任务可以继续")
+            self._repair_results(job)
+            if any(result.status not in {"done", "failed"} and not Path(result.path).is_file()
+                   for result in job.results):
+                raise ValueError("暂存任务的输入文件已丢失，请重新导入")
             self._start(job)
             return job
 

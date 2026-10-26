@@ -465,6 +465,27 @@ class _ParamsPageState extends State<ParamsPage> {
 
   Widget _field(String name, String label, {String? hint}) =>
       KtField(controller: field(name), label: label, hint: hint);
+
+  Widget _parameterGrid(
+    List<Widget> children, {
+    int maxColumns = 3,
+  }) => LayoutBuilder(
+    builder: (context, constraints) {
+      const spacing = 16.0;
+      final minWidth = 240 * MediaQuery.textScalerOf(context).scale(1);
+      final columns = ((constraints.maxWidth + spacing) / (minWidth + spacing))
+          .floor()
+          .clamp(1, maxColumns);
+      final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
+      return Wrap(
+        spacing: spacing,
+        children: [
+          for (final child in children) SizedBox(width: width, child: child),
+        ],
+      );
+    },
+  );
+
   void _boolChanged(String name, bool value) {
     setState(() {
       if (name == 'vad') enableVad = value;
@@ -485,148 +506,134 @@ class _ParamsPageState extends State<ParamsPage> {
     return KtPage(
       title: '听写参数',
       description: '媒体听写使用的 CrispASR 参数。字幕输入不会走到这一步。',
-      footer: Align(
-        alignment: Alignment.centerRight,
-        child: SizedBox(
-          width: 180,
-          child: FilledButton.icon(
-            onPressed: () => _save(),
-            icon: const Icon(Icons.save_outlined, size: 18),
-            label: const Text('保存'),
-          ),
+      columns: false,
+      actions: [
+        FilledButton.icon(
+          onPressed: () => _save(),
+          icon: const Icon(Icons.save_outlined, size: 18),
+          label: const Text('保存'),
         ),
-      ),
+      ],
       children: [
-        KtSection(
-          title: '高级模板',
-          icon: Icons.terminal,
-          children: [
-            KtField(
-              controller: template,
-              label: '完整命令模板',
-              hint: '根据下方参数实时生成；可手动编辑后保存',
-              maxLines: 7,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 4),
-              child: Text(
-                '手动编辑模板后保存会解析可编辑参数；未知参数会保留在模板中。',
-                style: TextStyle(fontSize: 12, color: p.muted),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: _restore,
-                  icon: const Icon(Icons.restart_alt, size: 16),
-                  label: const Text('恢复默认'),
-                ),
-              ),
-            ),
-          ],
-        ),
         KtSection(
           title: '基础与分段',
           icon: Icons.graphic_eq,
           children: [
-            _field('threads', '线程数', hint: '4'),
-            _field('processors', '处理器数', hint: '1'),
-            _field('offset_t', '起始偏移（毫秒）', hint: '0'),
-            _field('offset_n', '起始片段偏移', hint: '0'),
-            _field('duration', '处理时长（毫秒）', hint: '0 表示全部'),
-            _field('max_context', '最大文本上下文', hint: '-1'),
-            _field('max_len', '最大片段长度', hint: '0'),
-            _field('chunk_seconds', '无 VAD 时分段秒数', hint: '30'),
-            _field('chunk_overlap', '分段重叠秒数', hint: '3.0'),
-            KtSwitchRow(
-              icon: Icons.graphic_eq_outlined,
-              title: 'VAD',
-              sub: '--vad',
-              value: enableVad,
-              onChanged: (v) => _boolChanged('vad', v),
-            ),
-            KtSwitchRow(
-              icon: Icons.align_horizontal_left_outlined,
-              title: '强制 Aligner',
-              sub: '--force-aligner',
-              value: forceAligner,
-              onChanged: (v) => _boolChanged('align', v),
-            ),
-            KtSwitchRow(
-              icon: Icons.space_bar_outlined,
-              title: '按标点切分',
-              sub: '--split-on-punct',
-              value: splitOnPunct,
-              onChanged: (v) => _boolChanged('punct', v),
-            ),
-            KtSwitchRow(
-              icon: Icons.segment,
-              title: '按单词切分',
-              sub: '--split-on-word',
-              value: splitOnWord,
-              onChanged: (v) => _boolChanged('word', v),
-              showDivider: false,
-            ),
+            _parameterGrid([
+              _field('offset_t', '起始偏移（毫秒）', hint: '0'),
+              _field('offset_n', '起始片段偏移', hint: '0'),
+              _field('duration', '处理时长（毫秒）', hint: '0 表示全部'),
+              _field('max_context', '最大文本上下文', hint: '-1'),
+              _field('max_len', '最大片段长度', hint: '0'),
+              _field('chunk_seconds', '无 VAD 时分段秒数', hint: '30'),
+              _field('chunk_overlap', '分段重叠秒数', hint: '3.0'),
+            ]),
+            _parameterGrid([
+              KtSwitchRow(
+                icon: Icons.align_horizontal_left_outlined,
+                title: '强制 Aligner',
+                sub: '--force-aligner',
+                value: forceAligner,
+                onChanged: (v) => _boolChanged('align', v),
+                showDivider: false,
+              ),
+              KtSwitchRow(
+                icon: Icons.space_bar_outlined,
+                title: '按标点切分',
+                sub: '--split-on-punct',
+                value: splitOnPunct,
+                onChanged: (v) => _boolChanged('punct', v),
+                showDivider: false,
+              ),
+              KtSwitchRow(
+                icon: Icons.segment,
+                title: '按单词切分',
+                sub: '--split-on-word',
+                value: splitOnWord,
+                onChanged: (v) => _boolChanged('word', v),
+                showDivider: false,
+              ),
+            ], maxColumns: 2),
           ],
         ),
         KtSection(
           title: 'VAD 与标点',
           icon: Icons.multitrack_audio,
           children: [
-            _field('vad_max_speech', '最大语音时长（秒）', hint: '6'),
-            _field('vad_min_silence', '最小静音（毫秒）', hint: '300'),
-            KtComboField(
-              controller: field('vad_model'),
-              label: 'VAD 模型',
-              hint: '可输入模型别名或路径',
-              options: const [
-                'auto',
-                'silero',
-                'firered',
-                'marblenet',
-                'webrtc',
-                'whisper-vad',
-              ],
-            ),
-            _field('vad_threshold', 'VAD 阈值', hint: '0.5'),
-            _field('hotwords', '热词（逗号分隔）'),
-            KtComboField(
-              controller: field('sensitivity'),
-              label: '识别敏感度',
-              options: const ['conservative', 'balanced', 'aggressive'],
-            ),
-            KtComboField(
-              controller: field('punc_model'),
-              label: '标点模型',
-              hint: '留空使用默认',
-              options: const ['auto', 'firered', 'fullstop', 'punctuate-all'],
-            ),
-            _field('truecase_model', '大小写模型', hint: 'auto 或模型路径'),
-            _field('flush_after', '每 N 段刷新 SRT', hint: '1 表示逐段输出日志'),
+            _parameterGrid([
+              KtSwitchRow(
+                icon: Icons.graphic_eq_outlined,
+                title: 'VAD',
+                sub: '--vad',
+                value: enableVad,
+                onChanged: (v) => _boolChanged('vad', v),
+                showDivider: false,
+              ),
+              KtSwitchRow(
+                icon: Icons.text_format,
+                title: '禁用标点',
+                sub: '--no-punctuation',
+                value: noPunctuation,
+                onChanged: (v) => _boolChanged('nopunc', v),
+                showDivider: false,
+              ),
+            ], maxColumns: 2),
+            _parameterGrid([
+              _field('vad_max_speech', '最大语音时长（秒）', hint: '6'),
+              _field('vad_min_silence', '最小静音（毫秒）', hint: '300'),
+              KtComboField(
+                controller: field('vad_model'),
+                label: 'VAD 模型',
+                hint: '可输入模型别名或路径',
+                options: const [
+                  'auto',
+                  'silero',
+                  'firered',
+                  'marblenet',
+                  'webrtc',
+                  'whisper-vad',
+                ],
+              ),
+              _field('vad_threshold', 'VAD 阈值', hint: '0.5'),
+              _field('hotwords', '热词（逗号分隔）'),
+              KtComboField(
+                controller: field('sensitivity'),
+                label: '识别敏感度',
+                options: const ['conservative', 'balanced', 'aggressive'],
+              ),
+              KtComboField(
+                controller: field('punc_model'),
+                label: '标点模型',
+                hint: '留空使用默认',
+                options: const ['auto', 'firered', 'fullstop', 'punctuate-all'],
+              ),
+              _field('truecase_model', '大小写模型', hint: 'auto 或模型路径'),
+              _field('flush_after', '每 N 段刷新 SRT', hint: '1 表示逐段输出日志'),
+            ]),
           ],
         ),
         KtSection(
           title: '解码',
           icon: Icons.tune_outlined,
           children: [
-            _field('max_new_tokens', 'max-new-tokens', hint: '512'),
-            _field('frequency_penalty', 'frequency-penalty', hint: '0.0'),
-            _field('temperature', 'temperature', hint: '0.0'),
-            _field('temperature_inc', 'temperature-inc', hint: '0.2'),
-            _field('best_of', '候选数 best-of', hint: '5'),
-            KtComboField(
-              controller: field('beam_size'),
-              label: 'beam-size',
-              options: const ['greedy', '2', '5', '10'],
-            ),
-            _field('audio_ctx', '音频上下文', hint: '0'),
-            _field('word_thold', '词时间戳阈值', hint: '0.01'),
-            _field('entropy_thold', '熵阈值', hint: '2.4'),
-            _field('logprob_thold', '对数概率阈值', hint: '-1.0'),
-            _field('no_speech_thold', '无语音阈值', hint: '0.6'),
-            _field('seed', '随机种子', hint: '0'),
+            _parameterGrid([
+              _field('max_new_tokens', 'max-new-tokens', hint: '512'),
+              _field('frequency_penalty', 'frequency-penalty', hint: '0.0'),
+              _field('temperature', 'temperature', hint: '0.0'),
+              _field('temperature_inc', 'temperature-inc', hint: '0.2'),
+              _field('best_of', '候选数 best-of', hint: '5'),
+              KtComboField(
+                controller: field('beam_size'),
+                label: 'beam-size',
+                options: const ['greedy', '2', '5', '10'],
+              ),
+              _field('audio_ctx', '音频上下文', hint: '0'),
+              _field('word_thold', '词时间戳阈值', hint: '0.01'),
+              _field('entropy_thold', '熵阈值', hint: '2.4'),
+              _field('logprob_thold', '对数概率阈值', hint: '-1.0'),
+              _field('no_speech_thold', '无语音阈值', hint: '0.6'),
+              _field('seed', '随机种子', hint: '0'),
+            ]),
             KtSwitchRow(
               icon: Icons.refresh_outlined,
               title: '禁用温度回退',
@@ -638,43 +645,77 @@ class _ParamsPageState extends State<ParamsPage> {
           ],
         ),
         KtSection(
-          title: '高级解码选项',
-          icon: Icons.auto_fix_high,
-          children: [
-            KtSwitchRow(
-              icon: Icons.text_format,
-              title: '禁用标点',
-              sub: '--no-punctuation',
-              value: noPunctuation,
-              onChanged: (v) => _boolChanged('nopunc', v),
-              showDivider: false,
-            ),
-          ],
-        ),
-        KtSection(
           title: '设备',
           icon: Icons.memory_outlined,
           children: [
-            KtSwitchRow(
-              icon: Icons.memory_outlined,
-              title: '禁用 GPU',
-              sub: '--no-gpu',
-              value: noGpu,
-              onChanged: (v) => _boolChanged('gpu', v),
-            ),
-            _field('device', 'GPU 设备编号', hint: '0'),
-            KtComboField(
-              controller: field('gpu_backend'),
-              label: 'GPU 后端',
-              options: const ['auto', 'cuda', 'vulkan', 'metal', 'cpu'],
-            ),
-            KtSwitchRow(
-              icon: Icons.bolt,
-              title: 'Flash Attention',
-              sub: '--flash-attn / --no-flash-attn',
-              value: flashAttn,
-              onChanged: (v) => _boolChanged('flash', v),
-              showDivider: false,
+            _parameterGrid([
+              KtSwitchRow(
+                icon: Icons.memory_outlined,
+                title: '禁用 GPU',
+                sub: '--no-gpu',
+                value: noGpu,
+                onChanged: (v) => _boolChanged('gpu', v),
+                showDivider: false,
+              ),
+              KtSwitchRow(
+                icon: Icons.bolt,
+                title: 'Flash Attention',
+                sub: '--flash-attn / --no-flash-attn',
+                value: flashAttn,
+                onChanged: (v) => _boolChanged('flash', v),
+                showDivider: false,
+              ),
+            ], maxColumns: 2),
+            _parameterGrid([
+              _field('threads', '线程数', hint: '4'),
+              _field('processors', '处理器数', hint: '1'),
+              _field('device', 'GPU 设备编号', hint: '0'),
+              KtComboField(
+                controller: field('gpu_backend'),
+                label: 'GPU 后端',
+                options: const ['auto', 'cuda', 'vulkan', 'metal', 'cpu'],
+              ),
+            ], maxColumns: 2),
+          ],
+        ),
+        KtSection(
+          title: '高级模板',
+          icon: Icons.terminal,
+          action: TextButton.icon(
+            onPressed: _restore,
+            icon: const Icon(Icons.restart_alt, size: 16),
+            label: const Text('恢复默认'),
+          ),
+          children: [
+            ExpansionTile(
+              key: const PageStorageKey('asr-command-template'),
+              tilePadding: EdgeInsets.zero,
+              maintainState: true,
+              shape: const Border(),
+              collapsedShape: const Border(),
+              title: Text(
+                '编辑命令模板',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: p.text,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              children: [
+                KtField(
+                  controller: template,
+                  label: '完整命令模板',
+                  hint: '根据上方参数实时生成；可手动编辑后保存',
+                  maxLines: 5,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '手动编辑后保存会解析参数；未知参数保留在模板中。',
+                    style: TextStyle(fontSize: 12, color: p.muted),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -703,6 +703,8 @@ class _ParamsPageState extends State<ParamsPage> {
               ),
               children: [
                 KtField(
+                  // Separate the editor's scroll offset from the tile's bool state.
+                  key: const PageStorageKey('asr-command-template-editor'),
                   controller: template,
                   label: '完整命令模板',
                   hint: '根据上方参数实时生成；可手动编辑后保存',

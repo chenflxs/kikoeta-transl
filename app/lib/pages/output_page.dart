@@ -30,8 +30,13 @@ class _OutputPageState extends State<OutputPage> {
   late final TextEditingController llsUsername;
   late final TextEditingController llsPassword;
   late final TextEditingController llsKey;
+  late final TextEditingController kikoeruUrl;
+  late final TextEditingController kikoeruToken;
+  late final TextEditingController kikoeruSourceId;
+  late final TextEditingController kikoeruMediaUrlPrefix;
   late String preset;
   late bool llsSync;
+  late bool kikoeruSync;
   late String llsAuthMode;
   late String _savedDraft;
   late final VoidCallback _unregisterPageSaver;
@@ -39,6 +44,12 @@ class _OutputPageState extends State<OutputPage> {
   bool _pushingCache = false;
   String _cachePushStatus = '';
   List<String> _cachePushErrors = [];
+  bool _loadingDeliveries = false;
+  bool _deliveriesLoaded = false;
+  String _deliveryStatusError = '';
+  List<Map<String, dynamic>> _deliveries = [];
+  List<Map<String, dynamic>> _pendingDeliveryJobs = [];
+  final Set<String> _retryingDeliveries = {};
 
   @override
   void initState() {
@@ -56,6 +67,17 @@ class _OutputPageState extends State<OutputPage> {
       text: '${output['lls_password'] ?? ''}',
     );
     llsKey = TextEditingController(text: '${output['lls_key'] ?? ''}');
+    kikoeruSync = output['kikoeru_sync'] == true;
+    kikoeruUrl = TextEditingController(text: '${output['kikoeru_url'] ?? ''}');
+    kikoeruToken = TextEditingController(
+      text: '${output['kikoeru_token'] ?? ''}',
+    );
+    kikoeruSourceId = TextEditingController(
+      text: '${output['kikoeru_source_id'] ?? ''}',
+    );
+    kikoeruMediaUrlPrefix = TextEditingController(
+      text: '${output['kikoeru_media_url_prefix'] ?? ''}',
+    );
     _savedDraft = _draft();
     _settingsSynced = widget.app.settings.isNotEmpty;
     _unregisterPageSaver = widget.app.registerPageSaver(
@@ -74,6 +96,11 @@ class _OutputPageState extends State<OutputPage> {
     'lls_username': llsUsername.text,
     'lls_password': llsPassword.text,
     'lls_key': llsKey.text,
+    'kikoeru_sync': kikoeruSync,
+    'kikoeru_url': kikoeruUrl.text,
+    'kikoeru_token': kikoeruToken.text,
+    'kikoeru_source_id': kikoeruSourceId.text,
+    'kikoeru_media_url_prefix': kikoeruMediaUrlPrefix.text,
   };
 
   String _draft() => jsonEncode(_draftValues());
@@ -91,15 +118,26 @@ class _OutputPageState extends State<OutputPage> {
       'lls_username': '${output['lls_username'] ?? ''}',
       'lls_password': '${output['lls_password'] ?? ''}',
       'lls_key': '${output['lls_key'] ?? ''}',
+      'kikoeru_sync': output['kikoeru_sync'] == true,
+      'kikoeru_url': '${output['kikoeru_url'] ?? ''}',
+      'kikoeru_token': '${output['kikoeru_token'] ?? ''}',
+      'kikoeru_source_id': '${output['kikoeru_source_id'] ?? ''}',
+      'kikoeru_media_url_prefix': '${output['kikoeru_media_url_prefix'] ?? ''}',
     });
     directory.text = merged.values['directory'] as String;
     llsUrl.text = merged.values['lls_url'] as String;
     llsUsername.text = merged.values['lls_username'] as String;
     llsPassword.text = merged.values['lls_password'] as String;
     llsKey.text = merged.values['lls_key'] as String;
+    kikoeruUrl.text = merged.values['kikoeru_url'] as String;
+    kikoeruToken.text = merged.values['kikoeru_token'] as String;
+    kikoeruSourceId.text = merged.values['kikoeru_source_id'] as String;
+    kikoeruMediaUrlPrefix.text =
+        merged.values['kikoeru_media_url_prefix'] as String;
     setState(() {
       preset = merged.values['preset'] as String;
       llsSync = merged.values['lls_sync'] as bool;
+      kikoeruSync = merged.values['kikoeru_sync'] as bool;
       llsAuthMode = merged.values['lls_auth_mode'] as String;
     });
     _savedDraft = merged.baseline;
@@ -114,6 +152,10 @@ class _OutputPageState extends State<OutputPage> {
     llsUsername.dispose();
     llsPassword.dispose();
     llsKey.dispose();
+    kikoeruUrl.dispose();
+    kikoeruToken.dispose();
+    kikoeruSourceId.dispose();
+    kikoeruMediaUrlPrefix.dispose();
     super.dispose();
   }
 
@@ -154,6 +196,11 @@ class _OutputPageState extends State<OutputPage> {
     final username = llsUsername.text.trim();
     final password = llsPassword.text;
     final key = llsKey.text.trim();
+    final writeBack = kikoeruSync;
+    final sidecarUrl = kikoeruUrl.text.trim();
+    final sidecarToken = kikoeruToken.text.trim();
+    final sourceId = kikoeruSourceId.text.trim();
+    final mediaUrlPrefix = kikoeruMediaUrlPrefix.text.trim();
     await widget.app.updateSettings((next) {
       next['output'] = {
         ...(next['output'] as Map? ?? {}),
@@ -167,6 +214,11 @@ class _OutputPageState extends State<OutputPage> {
         'lls_username': username,
         'lls_password': password,
         'lls_key': key,
+        'kikoeru_sync': writeBack,
+        'kikoeru_url': sidecarUrl,
+        'kikoeru_token': sidecarToken,
+        'kikoeru_source_id': sourceId,
+        'kikoeru_media_url_prefix': mediaUrlPrefix,
       };
     });
     _savedDraft = draft;
@@ -230,6 +282,115 @@ class _OutputPageState extends State<OutputPage> {
     } finally {
       if (mounted) setState(() => _pushingCache = false);
     }
+  }
+
+  Future<void> _loadDeliveries() async {
+    if (_loadingDeliveries) return;
+    setState(() {
+      _loadingDeliveries = true;
+      _deliveryStatusError = '';
+    });
+    try {
+      final payload = await widget.app.engine.kikoeruDeliveries();
+      if (!mounted) return;
+      setState(() {
+        _deliveries = [
+          for (final item in payload['entries'] as List? ?? const [])
+            if (item is Map) Map<String, dynamic>.from(item),
+        ];
+        _pendingDeliveryJobs = [
+          for (final item in payload['pending_jobs'] as List? ?? const [])
+            if (item is Map) Map<String, dynamic>.from(item),
+        ];
+        _deliveriesLoaded = true;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _deliveryStatusError = '读取写回状态失败：$error');
+    } finally {
+      if (mounted) setState(() => _loadingDeliveries = false);
+    }
+  }
+
+  Future<void> _retryDelivery(String deliveryId) async {
+    if (_retryingDeliveries.contains(deliveryId)) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _retryingDeliveries.add(deliveryId);
+      _deliveryStatusError = '';
+    });
+    try {
+      await _save(auto: true);
+      await widget.app.engine.retryKikoeruDelivery(deliveryId);
+      if (mounted) await _loadDeliveries();
+    } catch (error) {
+      if (mounted) setState(() => _deliveryStatusError = '重试写回失败：$error');
+    } finally {
+      if (mounted) setState(() => _retryingDeliveries.remove(deliveryId));
+    }
+  }
+
+  String _deliveryStatusLabel(String status) => switch (status) {
+    'queued' => '等待发送',
+    'pending' => '等待写入',
+    'processing' => '正在处理',
+    'waiting' => '外挂处理中',
+    'retry' => '等待重试',
+    'completed' => '已完成',
+    'conflict' => '同名歌词冲突',
+    'failed' => '写回失败',
+    'blocked' => '配置待核对',
+    'paused' => '已暂停',
+    _ => status,
+  };
+
+  Widget _deliveryRow(Map<String, dynamic> entry) {
+    final p = paletteOf(context);
+    final id = '${entry['delivery_id'] ?? ''}';
+    final status = '${entry['status'] ?? ''}';
+    final result = entry['result'] is Map ? entry['result'] as Map : null;
+    final match = result?['match'];
+    final error = '${entry['error'] ?? ''}'.trim();
+    final detail = [
+      _deliveryStatusLabel(status),
+      if (match == 'selected') '服务端已选中此歌词',
+      if (match == 'present_not_selected') '文件已写入，服务端当前未选中',
+      if (error.isNotEmpty) error,
+    ].join('\n');
+    final retryable =
+        id.isNotEmpty &&
+        const {
+          'conflict',
+          'failed',
+          'blocked',
+          'retry',
+          'paused',
+          'waiting',
+        }.contains(status);
+    final retrying = _retryingDeliveries.contains(id);
+    return ListTile(
+      key: ValueKey('kikoeru-delivery-$id'),
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        '${entry['work_id'] ?? ''} / ${entry['track_path'] ?? ''}',
+        style: TextStyle(
+          fontSize: 13,
+          color: p.text,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        detail,
+        style: TextStyle(fontSize: 12, color: p.muted, height: 1.4),
+      ),
+      trailing: retryable
+          ? TextButton(
+              onPressed: _loadingDeliveries || _retryingDeliveries.isNotEmpty
+                  ? null
+                  : () => _retryDelivery(id),
+              child: Text(retrying ? '正在重试…' : '重试'),
+            )
+          : null,
+    );
   }
 
   @override
@@ -342,6 +503,82 @@ class _OutputPageState extends State<OutputPage> {
                 ),
               ),
             ),
+          ],
+        ),
+        KtSection(
+          title: 'Kikoeru 外挂',
+          icon: Icons.drive_file_move_outlined,
+          children: [
+            KtSwitchRow(
+              icon: Icons.drive_file_move_outlined,
+              title: '将匹配来源的歌词写回 Kikoeru 音轨目录',
+              sub: '仅处理符合下方媒体 URL 前缀的远端任务',
+              value: kikoeruSync,
+              onChanged: (value) => setState(() => kikoeruSync = value),
+              showDivider: false,
+            ),
+            const SizedBox(height: 6),
+            KtField(
+              controller: kikoeruUrl,
+              label: '外挂地址（HTTP/HTTPS）',
+              hint: '例如 http://127.0.0.1:2379',
+            ),
+            KtField(controller: kikoeruToken, label: '外挂访问密钥', obscure: true),
+            KtField(
+              controller: kikoeruSourceId,
+              label: '来源 ID',
+              hint: '与外挂 sources 配置中的名称一致',
+            ),
+            KtField(
+              controller: kikoeruMediaUrlPrefix,
+              label: '媒体 URL 前缀',
+              hint: '自建服务的音轨下载地址前缀',
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _loadingDeliveries || _retryingDeliveries.isNotEmpty
+                  ? null
+                  : _loadDeliveries,
+              icon: const Icon(Icons.refresh_outlined, size: 18),
+              label: Text(_loadingDeliveries ? '正在读取…' : '查看写回状态'),
+            ),
+            if (_deliveryStatusError.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                _deliveryStatusError,
+                style: TextStyle(fontSize: 12, color: p.text, height: 1.4),
+              ),
+            ],
+            if (_deliveriesLoaded &&
+                _deliveries.isEmpty &&
+                _pendingDeliveryJobs.isEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                '暂无写回记录',
+                style: TextStyle(fontSize: 12, color: p.muted, height: 1.4),
+              ),
+            ],
+            for (final entry in _deliveries) _deliveryRow(entry),
+            for (final job in _pendingDeliveryJobs)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  '待保存 ${job['kikoeru_pending_count'] ?? 0} 个写回结果',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: p.text,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  [
+                    '任务 ${job['job_id'] ?? ''}',
+                    if ('${job['kikoeru_delivery_error'] ?? ''}'.isNotEmpty)
+                      '${job['kikoeru_delivery_error']}',
+                  ].join('\n'),
+                  style: TextStyle(fontSize: 12, color: p.muted, height: 1.4),
+                ),
+              ),
           ],
         ),
         KtSection(

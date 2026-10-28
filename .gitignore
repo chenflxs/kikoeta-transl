@@ -65,6 +65,9 @@ start build.bat
 *.swo
 *.lnk
 test/
+!app/test/
+app/test/*
+!app/test/kikoeru_output_settings_test.dart
 tests/
 engine/test_*.py
 Thumbs.db

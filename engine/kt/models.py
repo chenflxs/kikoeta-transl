@@ -226,6 +226,11 @@ class OutputSettings:
     lls_username: str = ""
     lls_password: str = ""
     lls_key: str = ""
+    kikoeru_sync: bool = False
+    kikoeru_url: str = ""
+    kikoeru_token: str = ""
+    kikoeru_source_id: str = ""
+    kikoeru_media_url_prefix: str = ""
 
 
 @dataclass
@@ -496,6 +501,11 @@ def _output_from_dict(output: dict[str, Any], formats: list[Any]) -> OutputSetti
         lls_username=str(output.get("lls_username") or ""),
         lls_password=str(output.get("lls_password") or ""),
         lls_key=str(output.get("lls_key") or ""),
+        kikoeru_sync=_as_bool(output.get("kikoeru_sync"), False),
+        kikoeru_url=str(output.get("kikoeru_url") or ""),
+        kikoeru_token=str(output.get("kikoeru_token") or ""),
+        kikoeru_source_id=str(output.get("kikoeru_source_id") or ""),
+        kikoeru_media_url_prefix=str(output.get("kikoeru_media_url_prefix") or ""),
     )
 
 

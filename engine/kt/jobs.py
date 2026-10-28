@@ -41,6 +41,8 @@ class Job:
     source: str = "desktop"
     cache_context: dict[str, Any] = field(default_factory=dict)
     lls_output: OutputSettings | None = None
+    kikoeru_pending: list[int] = field(default_factory=list)
+    kikoeru_delivery_error: str = ""
     cleanup_paths: list[str] = field(default_factory=list)
     status: str = "queued"
     created_at: str = field(default_factory=_now)
@@ -68,6 +70,8 @@ class Job:
             "completed_files": sum(item.status == "done" for item in self.results),
             "total_files": len(self.files),
             "event_cursor": self.bus.cursor,
+            "kikoeru_pending_count": len(self.kikoeru_pending),
+            "kikoeru_delivery_error": self.kikoeru_delivery_error,
         }
 
 
@@ -83,16 +87,20 @@ def _resume_key(job: Job) -> str:
     # Presentation and listener credentials do not affect generated subtitles.
     for key in ("theme", "remote_access", "remote_username", "remote_password"):
         settings.pop(key, None)
-    raw = [job.source, work_id, paths, asdict(job.flags), settings]
+    raw = [job.source, work_id, paths, asdict(job.flags), settings,
+           job.cache_context.get("kikoeru_binding"), job.cache_context.get("kikoeru_indices")]
     return hashlib.sha256(json.dumps(raw, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 class JobManager:
-    def __init__(self) -> None:
+    def __init__(self, *, kikoeru_outbox=None) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = RLock()
         self._active: Job | None = None
         self._closing = False
+        self._kikoeru_outbox = kikoeru_outbox
+        self._delivery_stop = Event()
+        self._delivery_lock = RLock()
         for raw in load_checkpoints(WORK_DIR):
             try:
                 job = Job(
@@ -103,20 +111,35 @@ class JobManager:
                     cache_context=dict(raw.get("cache_context") or {}),
                     lls_output=OutputSettings(**raw["lls_output"]) if raw.get("lls_output") else None,
                     cleanup_paths=list(raw.get("cleanup_paths") or []),
-                    created_at=raw["created_at"], status="paused",
+                    created_at=raw["created_at"],
+                    status=raw["status"] if raw["status"] in {"completed", "failed", "cancelled"} else "paused",
+                    kikoeru_pending=list(raw.get("kikoeru_pending") or []),
                     results=[FileResult(**item) for item in raw.get("results", [])],
                 )
-                self._repair_results(job)
+                if job.is_unfinished:
+                    self._repair_results(job)
                 job.bus.close()
                 self._jobs[job.job_id] = job
             except (KeyError, TypeError, ValueError):
                 continue
+        self._delivery_thread_started = False
+        if self._kikoeru_outbox is not None:
+            self._delivery_thread_started = True
+            Thread(target=self._delivery_recovery, daemon=True, name="kikoeru-recovery").start()
 
-    def create(self, request: JobRequest, *, source: str = "desktop", resume_existing: bool = True) -> Job:
+    def enable_kikoeru_outbox(self, outbox) -> None:
+        with self._lock:
+            self._kikoeru_outbox = outbox
+            if not self._delivery_thread_started:
+                self._delivery_thread_started = True
+                Thread(target=self._delivery_recovery, daemon=True, name="kikoeru-recovery").start()
+
+    def create(self, request: JobRequest, *, source: str = "desktop", resume_existing: bool = True,
+               settings_snapshot: AppSettings | None = None) -> Job:
         files = [path for path in request.files if str(path).strip()]
         if not files:
             raise ValueError("没有输入文件")
-        saved_settings = load_settings()
+        saved_settings = settings_snapshot or load_settings()
         candidate = Job(
             job_id=uuid.uuid4().hex[:12], files=files, flags=request.flags,
             settings=merge_settings(saved_settings, request.settings_override), source=source,
@@ -164,6 +187,7 @@ class JobManager:
         """Preserve the interrupted workflow when the engine exits."""
         with self._lock:
             self._closing = True
+            self._delivery_stop.set()
             if self._active is not None and self._active.status in {"running", "queued"}:
                 self.preempt(self._active.job_id)
 
@@ -181,6 +205,7 @@ class JobManager:
             return job
 
     def cancel(self, job_id: str) -> Job:
+        finalize = False
         with self._lock:
             job = self._require(job_id)
             if job.status in {"completed", "failed", "cancelled"}:
@@ -191,8 +216,10 @@ class JobManager:
                 job.bus.emit("status", stage="cancelling", message="正在停止当前阶段")
             else:
                 job.status = "cancelled"
-                self._finish(job)
-            return job
+                finalize = True
+        if finalize:
+            self._finish(job)
+        return job
 
     def _require(self, job_id: str) -> Job:
         job = self._jobs.get(job_id)
@@ -272,7 +299,11 @@ class JobManager:
                     with self._lock:
                         if result.status != "cancelled" or job.status != "pausing":
                             job.results[index] = result
+                        if (self._kikoeru_outbox is not None and result.status == "done"
+                                and index not in job.kikoeru_pending):
+                            job.kikoeru_pending.append(index)
                         save_checkpoint(job, WORK_DIR)
+                    self._drain_deliveries(job)
             with self._lock:
                 pending = any(item.status not in {"done", "failed"} for item in job.results)
                 if pending and job.status == "pausing":
@@ -296,6 +327,7 @@ class JobManager:
             self._finish(job)
 
     def _finish(self, job: Job) -> None:
+        self._drain_deliveries(job)
         with self._lock:
             if job.status == "cancelling":
                 job.status = "cancelled"
@@ -326,6 +358,39 @@ class JobManager:
             cleanup_intermediates(*job.cleanup_paths)
         with self._lock:
             self._close_run(job)
+
+    def _drain_deliveries(self, job: Job) -> None:
+        if self._kikoeru_outbox is None or not self._delivery_lock.acquire(blocking=False):
+            return
+        # Only a local durable copy is made here; HTTP runs on the outbox worker.
+        # Keep a checkpoint until this copy succeeds, even for a finished job.
+        try:
+            with self._lock:
+                pending = list(job.kikoeru_pending)
+            try:
+                for index in pending:
+                    self._kikoeru_outbox.enqueue_file(job, index)
+                    with self._lock:
+                        if index in job.kikoeru_pending:
+                            job.kikoeru_pending.remove(index)
+                        save_checkpoint(job, WORK_DIR)
+                with self._lock:
+                    job.kikoeru_delivery_error = ""
+            except Exception as exc:
+                message = f"保存 Kikoeru 待投递结果失败：{exc}"
+                with self._lock:
+                    if job.kikoeru_delivery_error != message:
+                        job.bus.emit("log", message=message)
+                    job.kikoeru_delivery_error = message
+        finally:
+            self._delivery_lock.release()
+
+    def _delivery_recovery(self) -> None:
+        while not self._delivery_stop.wait(2):
+            with self._lock:
+                pending = [job for job in self._jobs.values() if job.kikoeru_pending]
+            for job in pending:
+                self._drain_deliveries(job)
 
     def _close_run(self, job: Job) -> None:
         try:

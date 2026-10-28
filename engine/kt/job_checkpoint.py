@@ -20,7 +20,7 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
     folder = work_dir / job.job_id
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / NAME
-    if job.status in {"completed", "failed", "cancelled"}:
+    if job.status in {"completed", "failed", "cancelled"} and not job.kikoeru_pending:
         target.unlink(missing_ok=True)
         return
     payload = {
@@ -36,6 +36,7 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
         "created_at": job.created_at,
         "status": job.status,
         "results": [result.to_dict() for result in job.results],
+        "kikoeru_pending": job.kikoeru_pending,
     }
     temporary = folder / (NAME + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -54,7 +55,9 @@ def load_checkpoints(work_dir: Path) -> list[dict[str, Any]]:
             raw = json.loads((folder / NAME).read_text(encoding="utf-8"))
             if (not isinstance(raw, dict) or raw.get("version") != 1
                     or raw.get("job_id") != folder.name
-                    or raw.get("status") not in {"queued", "running", "pausing", "paused"}
+                    or (raw.get("status") not in {"queued", "running", "pausing", "paused"}
+                        and not (raw.get("status") in {"completed", "failed", "cancelled"}
+                                 and isinstance(raw.get("kikoeru_pending"), list) and raw["kikoeru_pending"]))
                     or not isinstance(raw.get("files"), list)
                     or not raw["files"]
                     or not all(isinstance(path, str) and path for path in raw["files"])):

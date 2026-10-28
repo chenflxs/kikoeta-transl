@@ -394,6 +394,32 @@ class EngineClient {
     }
   }
 
+  Future<Map<String, dynamic>> kikoeruDeliveries() async {
+    final res = await http
+        .get(_uri('/api/kikoeru/deliveries'))
+        .timeout(const Duration(seconds: 8));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '读取写回状态失败');
+    }
+    return payload;
+  }
+
+  Future<Map<String, dynamic>> retryKikoeruDelivery(String deliveryId) async {
+    final res = await http
+        .post(
+          _uri(
+            '/api/kikoeru/deliveries/${Uri.encodeComponent(deliveryId)}/retry',
+          ),
+        )
+        .timeout(const Duration(seconds: 8));
+    final payload = _decode(res);
+    if (res.statusCode != 200) {
+      throw StateError(payload['error']?.toString() ?? '重试写回失败');
+    }
+    return payload;
+  }
+
   Future<Map<String, dynamic>> events(String id, int after) async {
     final client = http.Client();
     _eventsClient = client;

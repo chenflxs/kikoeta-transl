@@ -19,6 +19,8 @@ if str(ROOT) not in sys.path:
 from kt.jobs import Job, JobManager
 from kt.kikoeta_cache import cached_file, list_cached_results
 from kt.lls_sync import sync_cached_lyric
+from kt.kikoeru_sync import Outbox
+from kt.remote_source import bind_context
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
 from kt.models import AppSettings, JobRequest, StageFlags
@@ -32,10 +34,11 @@ from kt.settings import load_settings, save_settings
 from kt.stages.correct import test_correct
 from kt.llama_runtime import LLAMA_RUNTIME
 from kt.tools import catalog, list_crispasr_models, list_llama_models, list_openai_models, resolve_ffmpeg
-from kt.paths import WORK_DIR
+from kt.paths import DATA_DIR, WORK_DIR
 
 
 MANAGER = JobManager()
+KIKOERU_OUTBOX: Outbox | None = None
 HOST = "127.0.0.1"
 PORT = 18765
 PUBLIC_PORT = 2370
@@ -93,6 +96,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             self._json(load_settings().to_dict())
             return
+        if path == "/api/kikoeru/deliveries":
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._error(403, "delivery status is only available from localhost")
+                return
+            self._json({"entries": KIKOERU_OUTBOX.list_entries() if KIKOERU_OUTBOX else [],
+                        "pending_jobs": [job.to_dict() for job in MANAGER.list() if job.kikoeru_pending]})
+            return
         if path == "/api/lls/cache":
             self._json({"entries": list_cached_results()})
             return
@@ -110,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._error(403, "recent jobs are only available from localhost")
                 return
             active = {job.job_id for job in MANAGER.list()
-                      if job.is_unfinished}
+                      if job.is_unfinished or job.kikoeru_pending}
             self._json({"entries": list_recent_jobs(active)})
             return
         if path.startswith("/api/jobs/"):
@@ -145,6 +155,21 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
         if not self._allow_request(path):
             return
+        if path.startswith("/api/kikoeru/deliveries/") and path.endswith("/retry"):
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._error(403, "delivery retries are only available from localhost")
+                return
+            parts = path.split("/")
+            if len(parts) != 6 or KIKOERU_OUTBOX is None:
+                self._error(404, "not found")
+                return
+            self._read_json()
+            record = KIKOERU_OUTBOX.retry(unquote(parts[4]))
+            if record is None:
+                self._error(404, "not found")
+            else:
+                self._json(record)
+            return
         if path.startswith("/api/lls/cache/"):
             parts = path.split("/")
             if len(parts) != 7 or parts[5] != "files":
@@ -177,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
             cleanup_paths: list[str] = []
             try:
                 payload = self._read_json()
+                settings_snapshot = load_settings()
+                cache_context = _remote_cache_context(payload, settings_snapshot.output)
                 files, cleanup_paths = _materialize_remote_files(payload.get("files") or [])
                 flags_raw = payload.get("flags") or {}
                 request = JobRequest(
@@ -187,11 +214,12 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                     settings_override=payload.get("settings") or {},
                     cleanup_paths=cleanup_paths,
-                    cache_context=_remote_cache_context(payload),
+                    cache_context=cache_context,
                 )
                 job = MANAGER.create(
                     request, source="kikoeta",
                     resume_existing=payload.get("resume_existing") is not False,
+                    settings_snapshot=settings_snapshot,
                 )
             except RuntimeError as exc:
                 cleanup_intermediates(*cleanup_paths)
@@ -351,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if len(parts) == 3:
             active = {job.job_id for job in MANAGER.list()
-                      if job.is_unfinished}
+                      if job.is_unfinished or job.kikoeru_pending}
             try:
                 deleted = delete_all_recent_jobs(active)
             except OSError as exc:
@@ -362,8 +390,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4:
             job_id = parts[3]
             job = MANAGER.get(job_id)
-            if job is not None and job.is_unfinished:
-                self._error(409, "任务仍在运行或暂存，不能删除记录")
+            if job is not None and (job.is_unfinished or job.kikoeru_pending):
+                self._error(409, "任务未结束或歌词待保存，不能删除记录")
                 return
             try:
                 delete_recent_job(job_id)
@@ -380,8 +408,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         job_id = parts[3]
         job = MANAGER.get(job_id)
-        if job is not None and job.is_unfinished:
-            self._error(409, "任务仍在运行或暂存，不能清理缓存")
+        if job is not None and (job.is_unfinished or job.kikoeru_pending):
+            self._error(409, "任务未结束或歌词待保存，不能清理缓存")
             return
         try:
             freed = delete_translation_cache(job_id)
@@ -563,12 +591,15 @@ def _is_remote_api_path(path: str) -> bool:
 
 
 def main() -> None:
-    global _LOCAL_SERVER, _PUBLIC_SERVER, _CLIENT_LAST_SEEN
+    global _LOCAL_SERVER, _PUBLIC_SERVER, _CLIENT_LAST_SEEN, KIKOERU_OUTBOX
     parser = argparse.ArgumentParser(description="Kikoeta Transl engine")
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
     server = _EngineHTTPServer((args.host, args.port), Handler)
+    KIKOERU_OUTBOX = Outbox(DATA_DIR / "kikoeru-outbox.sqlite")
+    MANAGER.enable_kikoeru_outbox(KIKOERU_OUTBOX)
+    KIKOERU_OUTBOX.start()
     _LOCAL_SERVER = server
     with _CLIENT_SEEN_LOCK:
         _CLIENT_LAST_SEEN = None
@@ -597,6 +628,9 @@ def main() -> None:
         pass
     finally:
         _CLIENT_WATCHDOG_STOP.set()
+        MANAGER.shutdown()
+        if KIKOERU_OUTBOX is not None:
+            KIKOERU_OUTBOX.close()
         LLAMA_RUNTIME.shutdown()
         server.server_close()
         if _PUBLIC_SERVER is not None:
@@ -680,18 +714,8 @@ def _remote_file_name(value: object, source_url: str, index: int) -> str:
     return name or f"input_{index}"
 
 
-def _remote_cache_context(payload: dict) -> dict[str, object]:
-    raw = payload.get("cache")
-    if not isinstance(raw, dict):
-        return {}
-    work_id = str(raw.get("work_id") or "").strip()
-    paths = raw.get("track_paths")
-    if not work_id or not isinstance(paths, list):
-        return {}
-    return {
-        "work_id": work_id,
-        "track_paths": [str(path).strip() for path in paths],
-    }
+def _remote_cache_context(payload: dict, output=None) -> dict[str, object]:
+    return bind_context(payload, output or load_settings().output)
 
 
 

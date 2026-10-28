@@ -28,9 +28,8 @@ WORKSPACE = ENGINE.parent.parent / "kikoeru-ch"
 SIDECAR = Path(os.environ.get("KIKOERU_SIDECAR_DIR", WORKSPACE / "sidecar"))
 EXE = Path(os.environ.get("KIKOERU_WINDOWS_EXE", WORKSPACE / "kikoeru-win-x64-v0.6.19-20261025" / "kikoeru-express.exe"))
 sys.path.insert(0, str(ENGINE))
-sys.path.insert(0, str(SIDECAR))
 
-from kikoeru_sidecar.server import SidecarApp, run_server
+from node_sidecar import NodeSidecar
 from kt.jobs import JobManager
 from kt.kikoeru_sync import Outbox
 from kt.models import AppSettings, FileResult
@@ -59,8 +58,8 @@ def stop_http(http, thread):
 
 
 def main():
-    if os.name != "nt" or not EXE.is_file() or not SIDECAR.is_dir():
-        raise SystemExit("This optional smoke requires Windows, the kikoeru release EXE and sidecar sources")
+    if os.name != "nt" or not EXE.is_file() or not (SIDECAR / "src" / "cli.js").is_file() or not shutil.which("node"):
+        raise SystemExit("This optional smoke requires Windows, the kikoeru release EXE, Node.js and sidecar sources")
     parent = WORKSPACE.resolve()
     temporary = Path(tempfile.mkdtemp(prefix="kt-kikoeru-smoke-", dir=parent)).resolve()
     if temporary.parent != parent or not temporary.name.startswith("kt-kikoeru-smoke-"):
@@ -117,12 +116,11 @@ def main():
                 db.execute("INSERT INTO t_work(id,root_folder,dir,title,circle_id,lyric_status,memo) VALUES(123456,'fixture','RJ123456 fixture','fixture',1,'0','{}')")
         tree = json_request(source_base, "/api/tracks/123456")
         audio_node = tree[0]["children"][0]
-        app = SidecarApp({"api_token": "sidecar-smoke-token", "sources": {"fixture": {
+        app = NodeSidecar(SIDECAR, {"api_token": "sidecar-smoke-token", "sources": {"fixture": {
             "base_url": source_base, "token": "",
             "roots": [{"server": str(library), "local": str(library)}],
         }}}, temporary / "sidecar.sqlite")
-        side_http = run_server(app, port=0)
-        side_thread = start_http(side_http)
+        side_http = app.start()
         settings = AppSettings()
         settings.output.kikoeru_sync = True
         settings.output.kikoeru_url = f"http://127.0.0.1:{side_http.server_port}"
@@ -188,7 +186,6 @@ def main():
         if outbox is not None:
             outbox.close()
         stop_http(local_http, local_thread)
-        stop_http(side_http, side_thread)
         if app is not None:
             app.close()
         stack.close()

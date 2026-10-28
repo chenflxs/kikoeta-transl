@@ -4,7 +4,7 @@ KT 可将 Kikoeta 远端任务生成的 LRC 可靠投递到独立的 Kikoeru 外
 
 ## 配置
 
-先在 kikoeru 所在机器或能访问其音声目录的机器运行外挂。外挂配置中的 `source_id` 是服务器的稳定名称，例如 `my-kikoeru`；它必须绑定固定的 kikoeru 地址及音声库目录映射。部署方法见外挂的 `sidecar/README.md`。
+先在 kikoeru 所在机器或能访问其音声目录的机器运行 Node.js 外挂（Node.js 22.13+，无需 Python 或 npm install）。外挂配置中的 `source_id` 是服务器的稳定名称，例如 `my-kikoeru`；它必须绑定固定的 kikoeru 地址及音声库目录映射。部署方法见外挂的 `sidecar/README.md`。
 
 在 KT“输出”页启用 Kikoeru 写回，并填写：
 

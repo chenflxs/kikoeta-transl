@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -22,13 +23,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 SIDECAR = Path(os.environ.get("KIKOERU_SIDECAR_DIR", ROOT.parent.parent / "kikoeru-ch" / "sidecar"))
-if SIDECAR.is_dir():
-    sys.path.insert(0, str(SIDECAR))
-try:
-    from kikoeru_sidecar.server import SidecarApp, run_server
-except ImportError:
-    SidecarApp = None
-    run_server = None
+from node_sidecar import NodeSidecar
 
 from kt.jobs import JobManager
 from kt.kikoeru_sync import Outbox
@@ -84,7 +79,7 @@ class _KikoeruHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-@unittest.skipIf(SidecarApp is None, "Set KIKOERU_SIDECAR_DIR to the independent sidecar source")
+@unittest.skipUnless((SIDECAR / 'src' / 'cli.js').is_file() and shutil.which('node'), "Node sidecar source and runtime required")
 class KikoeruDeliveryChecks(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -100,7 +95,7 @@ class KikoeruDeliveryChecks(unittest.TestCase):
         self.upstream_thread = threading.Thread(target=self.upstream.serve_forever, daemon=True)
         self.upstream_thread.start()
         upstream_url = f"http://127.0.0.1:{self.upstream.server_port}"
-        self.sidecar = SidecarApp({"api_token": "sidecar-token-12345", "sources": {"fixture": {
+        self.sidecar = NodeSidecar(SIDECAR, {"api_token": "sidecar-token-12345", "sources": {"fixture": {
             "base_url": upstream_url, "token": "source-token",
             "roots": [{"server": str(self.library), "local": str(self.library)}],
         }}}, self.root / "sidecar.sqlite")
@@ -134,16 +129,12 @@ class KikoeruDeliveryChecks(unittest.TestCase):
         self.temporary.cleanup()
 
     def start_sidecar(self):
-        self.side_server = run_server(self.sidecar, port=getattr(self, "side_port", 0))
+        self.side_server = self.sidecar.start(port=getattr(self, "side_port", 0))
         self.side_port = self.side_server.server_port
-        self.side_thread = threading.Thread(target=self.side_server.serve_forever, daemon=True)
-        self.side_thread.start()
 
     def stop_sidecar(self):
         if self.side_server is not None:
-            self.side_server.shutdown()
-            self.side_server.server_close()
-            self.side_thread.join(timeout=3)
+            self.sidecar.close()
             self.side_server = None
 
     def request(self, count=3):

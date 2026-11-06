@@ -7,9 +7,11 @@ from typing import Optional, List
 from collections import deque
 from contextvars import ContextVar
 from threading import Lock
+import re
 from GalTransl.COpenAI import COpenAITokenPool, COpenAIToken
 from GalTransl.ConfigHelper import CProxyPool, build_httpx_proxy_kwargs
 from GalTransl import LOGGER, LANG_SUPPORTED, TRANSLATOR_DEFAULT_ENGINE
+from GalTransl import DEFAULT_GUIDELINE_NAME
 from GalTransl.i18n import get_text, GT_LANG
 from GalTransl.ConfigHelper import (
     CProjectConfig,
@@ -18,6 +20,7 @@ from GalTransl.CSentense import CSentense, CTransList
 from GalTransl.Cache import save_transCache_to_json
 from GalTransl.Dictionary import CGptDict
 from GalTransl.Utils import load_guideline_file, fix_quotes2
+from GalTransl.ProjectGuideline import combine_guidelines, read_project_guideline
 from openai import (
     RateLimitError,
     AsyncOpenAI,
@@ -61,6 +64,160 @@ async def _save_trans_cache_incremental(trans_list, cache_file_path, project_dir
         kwargs["project_dir"] = project_dir
     await save_transCache_to_json(trans_list, cache_file_path, **kwargs)
 
+# 思考内容的字段名：不同平台不一样（DeepSeek 用 reasoning_content，OpenRouter 等用 reasoning）。
+# 与 GalTransl/Agent/core.py 的 REASONING_FIELD_NAMES 同一套约定：多轮对话里拿到思考内容后
+# 必须按命中的原名跟着 assistant 消息带回去，thinking 模式下少一条下一次请求就会被判 400
+# （「The `reasoning_content` in the thinking mode must be passed back to the API」）。
+REASONING_FIELD_NAMES = ("reasoning_content", "reasoning")
+
+# 流式输出期间给工作台报「思考中/翻译中 + 输出速度」的间隔（秒）：逐 chunk 报太密，
+# 报太稀又看不出快慢，0.2s 大概是一次界面轮询的五分之一。换阶段不等这个间隔，立刻报
+_STREAM_PROGRESS_REPORT_INTERVAL = 0.2
+
+
+def _extract_reasoning(message_or_delta) -> tuple[str, str]:
+    """从流式 delta / 非流式 message 上取思考内容，返回 (文本, 命中的字段名)。
+
+    位置因平台而异：有的在直接属性（delta.reasoning_content）上，有的被 OpenAI SDK
+    收进 model_extra（部分平台直接用 reasoning）。两个名字、两处都试一遍。
+    """
+    extra = getattr(message_or_delta, "model_extra", None) or {}
+    for name in REASONING_FIELD_NAMES:
+        piece = getattr(message_or_delta, name, None)
+        if not isinstance(piece, str) or not piece:
+            piece = extra.get(name) if isinstance(extra, dict) else None
+        if isinstance(piece, str) and piece:
+            return piece, name
+    return "", ""
+
+
+class _InlineThinkDetector:
+    """判断流式正文此刻还在不在开头那段 <think>…</think> 里。
+
+    有的接口（本地 llama.cpp、部分中转）不走 reasoning_content，而是把思考直接写进正文开头，
+    引擎最后按 </think> 剥掉（见 ForGalJsonTranslate）。只盯累计的正文、不看单个 chunk：
+    标签会被流式切成两半（`</thi` + `nk>`），逐 chunk 找必然漏。
+    """
+
+    _OPEN = "<think>"
+    _CLOSE = "</think>"
+
+    def __init__(self) -> None:
+        self._state = "head"  # head 还没出现非空白 / think 在思考段里 / body 正文
+        self._buffer = ""
+
+    def feed(self, piece: str) -> Optional[str]:
+        """喂一段正文，返回它算 thinking 还是 writing；只有空白、还判断不了时返回 None。"""
+        if self._state == "body":
+            return "writing" if piece.strip() else None
+        self._buffer += piece
+        if self._state == "head":
+            head = self._buffer.lstrip()
+            if not head:
+                self._buffer = ""
+                return None
+            if head.startswith(self._OPEN):
+                self._state = "think"
+                self._buffer = head[len(self._OPEN):]
+            elif self._OPEN.startswith(head):
+                return "thinking"  # 「<thi」：多半是标签被切开了，先按思考算
+            else:
+                self._state = "body"
+                self._buffer = ""
+                return "writing"
+        end = self._buffer.find(self._CLOSE)
+        if end < 0:
+            # 留一截尾巴，拼下一段时能认出被切开的 </think>
+            self._buffer = self._buffer[-(len(self._CLOSE) - 1):]
+            return "thinking"
+        rest = self._buffer[end + len(self._CLOSE):]
+        self._state = "body"
+        self._buffer = ""
+        return "writing" if rest.strip() else "thinking"
+
+
+class _FileRequestProgress:
+    """一次 ask_chatbot 报给工作台「文件进度」的状态：那一行的小灯就是它点的。
+
+    进门登记（请求中），每次尝试发出前回到「请求中」，流式输出时按阶段报字数（思考中 / 翻译中），
+    失败退避时报「重试中」，出门注销——注销在 ask_chatbot 的 finally 里，正常返回、重试到上限、
+    取消都会走到，不会留下一盏一直亮着的灯。非流式请求从头到尾都是「请求中」。
+    progress_file 留空就什么都不做。这只是界面上的一颗灯：出错一律吞掉，不能影响翻译本身。
+    """
+
+    def __init__(self, pj_config, progress_file: str) -> None:
+        self._request_id = None
+        self._phase = "waiting"
+        self._pending_chars = 0
+        self._last_report = 0.0
+        if not progress_file:
+            return
+        try:
+            from GalTransl.server import begin_runtime_request
+
+            self._request_id = begin_runtime_request(
+                getattr(pj_config, "runtime_project_dir", pj_config.getProjectDir()),
+                filename=progress_file,
+            )
+        except Exception:
+            self._request_id = None
+
+    def attempt(self) -> None:
+        """又要发一次请求了（首发或重试）：回到「请求中」，等第一个字。"""
+        self._switch("waiting")
+
+    def retrying(self) -> None:
+        """这一次失败了，正在退避等下一次。"""
+        self._switch("retrying")
+
+    def output(self, phase: Optional[str], chars: int) -> None:
+        """流式里新到一段输出。phase 取 thinking / writing；None 表示只是空白，不改阶段。"""
+        if self._request_id is None:
+            return
+        if phase is not None and phase != self._phase:
+            self._switch(phase, chars)
+            return
+        if self._phase not in ("thinking", "writing"):
+            return
+        self._pending_chars += chars
+        now = time.monotonic()
+        if now - self._last_report >= _STREAM_PROGRESS_REPORT_INTERVAL:
+            self._report(now)
+
+    def close(self) -> None:
+        if self._request_id is None:
+            return
+        request_id, self._request_id = self._request_id, None
+        try:
+            from GalTransl.server import end_runtime_request
+
+            end_runtime_request(request_id)
+        except Exception:
+            pass
+
+    def _switch(self, phase: str, chars: int = 0) -> None:
+        if self._request_id is None:
+            return
+        if phase == self._phase and not chars and not self._pending_chars:
+            return
+        now = time.monotonic()
+        if self._pending_chars:
+            # 上一阶段攒着的字先记到上一阶段名下，再换
+            self._report(now)
+        self._phase = phase
+        self._pending_chars = chars
+        self._report(now)
+
+    def _report(self, now: float) -> None:
+        chars, self._pending_chars = self._pending_chars, 0
+        self._last_report = now
+        try:
+            from GalTransl.server import note_runtime_request
+
+            note_runtime_request(self._request_id, phase=self._phase, chars=chars)
+        except Exception:
+            pass
+
 
 class RequestHealthMetrics:
     def __init__(self) -> None:
@@ -101,7 +258,19 @@ class RequestHealthMetrics:
             }
 
 
+class TranslationRequestError(RuntimeError):
+    """自动模板的一次 API 请求失败，包括流式响应读取失败。"""
+
+
+class TranslationParseError(RuntimeError):
+    """一次翻译响应未通过校验；自动模板据此立即切换模式。"""
+
+
 class BaseTranslate:
+    def _raise_parse_error_for_auto(self, message):
+        if getattr(self, "fail_fast", False):
+            raise TranslationParseError(message)
+
     def __init__(
         self,
         config: CProjectConfig,
@@ -124,12 +293,18 @@ class BaseTranslate:
         self.eng_type = eng_type
         self.last_file_name = ""
         self.restore_context_mode = config.getKey("gpt.restoreContextMode", True)
-        # 翻译规范
+        # 翻译规范：全局规范（translation_guidelines/ 里选的那份）+ 项目规范
+        # （项目目录里的 translation_guideline.md，可能没有）。两份拼成一段塞进
+        # prompt 的 <translation_guidelines> 段：项目规范在后、冲突时以它为准。
+        # 这里只在翻译器初始化时读一次，所以改完规范要**下一次启动翻译**才生效。
         if val := config.getKey("gpt.translation_guideline"):
             guideline_file = val
         else:
-            guideline_file = "Basic.md"
-        self.pj_config.translation_guideline=load_guideline_file(guideline_file)
+            guideline_file = DEFAULT_GUIDELINE_NAME
+        self.pj_config.translation_guideline = combine_guidelines(
+            load_guideline_file(guideline_file),
+            read_project_guideline(config.getProjectDir()),
+        )
         
         # 保存间隔
         if val := config.getKey("save_steps"):
@@ -512,6 +687,71 @@ class BaseTranslate:
             LOGGER.warning("连续网络错误，已刷新 API 客户端 [%s]", token.maskToken())
             return replacement
 
+    @staticmethod
+    def _select_client_token(
+        self,
+        api_try_count: int = 0,
+        failed_token: Optional[COpenAIToken] = None,
+    ) -> tuple[AsyncOpenAI, COpenAIToken]:
+        """按 tokenStrategy (random 或 fallback) 选择当前请求使用的 client 和 token。
+
+        当 failed_token 提供时，表示上一次请求报错，此时：
+        - fallback: 顺延切换到下一个 token；
+        - random: 排除报错 token，随机切换到另一个 token。
+        不直接永久剔除报错的 token，因为令牌可能只是临时失效。
+        """
+        client_list = getattr(self, "client_list", None)
+        if not client_list:
+            last_err = "没有可用的 API 令牌！"
+            if getattr(self, "fail_fast", False):
+                raise TranslationRequestError(last_err)
+            raise RuntimeError(last_err)
+
+        if len(client_list) == 1:
+            setattr(self, "_active_token_index", 0)
+            return client_list[0]
+
+        strategy = getattr(self, "tokenStrategy", "random")
+        active_idx = getattr(self, "_active_token_index", None)
+
+        if strategy == "fallback":
+            if failed_token is not None:
+                found_idx = None
+                for i, (_, t) in enumerate(client_list):
+                    if t is failed_token:
+                        found_idx = i
+                        break
+                if found_idx is not None:
+                    active_idx = (found_idx + 1) % len(client_list)
+                else:
+                    curr = active_idx if active_idx is not None else 0
+                    active_idx = (curr + 1) % len(client_list)
+            elif active_idx is None:
+                active_idx = 0
+            active_idx = active_idx % len(client_list)
+            setattr(self, "_active_token_index", active_idx)
+            return client_list[active_idx]
+
+        elif strategy == "random":
+            if failed_token is not None:
+                candidates = [
+                    i for i, pair in enumerate(client_list)
+                    if pair[1] is not failed_token
+                ]
+                if candidates:
+                    active_idx = random.choice(candidates)
+                else:
+                    active_idx = random.randrange(len(client_list))
+            elif active_idx is None:
+                active_idx = random.randrange(len(client_list))
+            else:
+                active_idx = active_idx % len(client_list)
+            setattr(self, "_active_token_index", active_idx)
+            return client_list[active_idx]
+
+        else:
+            raise ValueError(f"tokenStrategy must be random or fallback, got: {strategy}")
+
     def _get_chatbot_state(self) -> tuple[bool, str]:
         """Get request-local metadata, with compatibility fallback for tests/plugins."""
         return _CHATBOT_STATE.get() or (
@@ -578,6 +818,22 @@ class BaseTranslate:
             )
         except Exception:
             pass
+
+    def _has_speaker_column_in_translation(self, text, tran, output_speaker=""):
+        """Reject a copied NAME column, while preserving pipes already in the source."""
+        if "|" in tran.post_src or "｜" in tran.post_src:
+            return False
+        match = re.match(r"^\s*([^|｜\n]+?)\s*[|｜]", text)
+        if not match:
+            return False
+        speaker = tran.get_speaker_name()
+        names = {speaker, output_speaker}
+        replacement = getattr(self.pj_config, "name_replaceDict", {}).get(speaker)
+        if isinstance(replacement, str):
+            names.add(replacement)
+        names.discard("")
+        names.discard("null")
+        return match.group(1).strip() in names
 
     def _normalize_parsed_translation_text(
         self, line_dst: str, current_tran: CSentense, n_symbol: str
@@ -935,7 +1191,70 @@ class BaseTranslate:
         base_try_count=0,
         stream_line_callback=None,
         max_retry_count: Optional[int] = None,
+        reasoning_holder: Optional[dict] = None,
+        progress_file: str = "",
+        tools=NOT_GIVEN,
+        tool_response_holder: Optional[dict] = None,
+        tool_choice=NOT_GIVEN,
     ):
+        """发一次请求并返回 (正文, token)。
+
+        传了 reasoning_holder 时，把这次响应的思考内容填进去：{"field": 字段名, "text": 思考全文}。
+        多轮对话的调用方要拿它跟着 assistant 消息回传给 provider（见 REASONING_FIELD_NAMES）。
+
+        progress_file 是这次请求属于哪个文件：工作台「文件进度」那一行的小灯靠它点（请求中黄、
+        思考中蓝、翻译中绿、重试中红，见 _FileRequestProgress）。留空就不报。
+        """
+        progress = _FileRequestProgress(self.pj_config, progress_file)
+        try:
+            # 按类取而不是 self._ask_chatbot：测试里常拿一个只挂了几个属性的替身当 self 调
+            return await BaseTranslate._ask_chatbot(
+                self,
+                prompt=prompt,
+                system=system,
+                messages=messages,
+                temperature=temperature,
+                frequency_penalty=frequency_penalty,
+                top_p=top_p,
+                stream=stream,
+                max_tokens=max_tokens,
+                reasoning_effort=reasoning_effort,
+                file_name=file_name,
+                base_try_count=base_try_count,
+                stream_line_callback=stream_line_callback,
+                max_retry_count=max_retry_count,
+                reasoning_holder=reasoning_holder,
+                progress=progress,
+                tools=tools,
+                tool_response_holder=tool_response_holder,
+                tool_choice=tool_choice,
+            )
+        finally:
+            progress.close()
+
+    async def _ask_chatbot(
+        self,
+        *,
+        prompt,
+        system,
+        messages,
+        temperature,
+        frequency_penalty,
+        top_p,
+        stream,
+        max_tokens,
+        reasoning_effort,
+        file_name,
+        base_try_count,
+        stream_line_callback,
+        max_retry_count: Optional[int],
+        reasoning_holder: Optional[dict],
+        progress: _FileRequestProgress,
+        tools=NOT_GIVEN,
+        tool_response_holder: Optional[dict] = None,
+        tool_choice=NOT_GIVEN,
+    ):
+        """ask_chatbot 的本体：带重试地发请求，边收边报 progress。"""
         if max_retry_count is None:
             max_retry_count = getattr(self, "max_api_retries", None)
         if max_retry_count is not None:
@@ -948,15 +1267,15 @@ class BaseTranslate:
         api_attempts = 0
         client: AsyncOpenAI
         token: COpenAIToken
-        client, token = random.choices(self.client_list, k=1)[0]
+        last_failed_token: Optional[COpenAIToken] = None
+        client, token = BaseTranslate._select_client_token(
+            self, api_try_count=api_try_count
+        )
         if messages is None:
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ]
-
-        if "gemini" in token.model_name:
-            temperature = NOT_GIVEN
 
         while True:
             # Check stop_event before each API attempt so that cancelling
@@ -966,17 +1285,20 @@ class BaseTranslate:
                 from GalTransl.Service import JobCancelledError
                 raise JobCancelledError()
 
+            progress.attempt()
             request_started = time.monotonic()
             try:
-                if self.tokenStrategy == "random":
-                    if api_try_count % 2 == 0:
-                        client, token = random.choices(self.client_list, k=1)[0]
-                elif self.tokenStrategy == "fallback":
-                    index = api_try_count % len(self.client_list)
-                    client, token = self.client_list[index]
-                else:
-                    raise ValueError("tokenStrategy must be random or fallback")
-                is_stream=stream if stream != NOT_GIVEN else token.stream
+                if last_failed_token is not None:
+                    client, token = BaseTranslate._select_client_token(
+                        self,
+                        api_try_count=api_try_count,
+                        failed_token=last_failed_token,
+                    )
+                    last_failed_token = None
+                actual_temperature = (
+                    NOT_GIVEN if "gemini" in token.model_name else temperature
+                )
+                is_stream = stream if stream != NOT_GIVEN else token.stream
                 self._last_chatbot_was_stream = bool(is_stream)
                 self._last_chatbot_model_name = getattr(token, "model_name", "")
                 _CHATBOT_STATE.set(
@@ -993,13 +1315,15 @@ class BaseTranslate:
                     "model": token.model_name,
                     "messages": messages,
                     "stream": is_stream,
-                    "temperature": temperature,
+                    "temperature": actual_temperature,
                     "frequency_penalty": frequency_penalty,
                     "max_tokens": max_tokens,
                     "timeout": self.api_timeout,
                     "top_p": top_p,
                     "reasoning_effort": reasoning_effort,
                 }
+                if tools is not NOT_GIVEN:
+                    request_kwargs.update(tools=tools, tool_choice="auto" if tool_choice is NOT_GIVEN else tool_choice)
                 if getattr(self, "extra_body", None):
                     request_kwargs["extra_body"] = self.extra_body
                 api_task = asyncio.ensure_future(
@@ -1028,10 +1352,16 @@ class BaseTranslate:
                 response = api_task.result()
                 result = ""
                 lastline = ""
+                reasoning_parts: List[str] = []
+                reasoning_field = ""
+                tool_calls = {}
+                finish_reason = None
                 if is_stream:
                     stream_abort_requested = False
                     stream_line_buffer = ""
                     stream_completed = False
+                    # 正文开头若是 <think>…</think>（思考写在正文里的接口），那一段也算「思考中」
+                    think_detector = _InlineThinkDetector()
                     try:
                         async for chunk in response:
                             # Check stop in the middle of streaming so we don't
@@ -1042,15 +1372,47 @@ class BaseTranslate:
                                 raise JobCancelledError()
                             if not chunk.choices:
                                 continue
-                            if hasattr(chunk.choices[0].delta, "reasoning_content"):
-                                lastline = lastline + (
-                                    chunk.choices[0].delta.reasoning_content or ""
-                                )
+                            finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
+                            if tool_response_holder is not None:
+                                for call in getattr(chunk.choices[0].delta, "tool_calls", None) or []:
+                                    slot = tool_calls.setdefault(call.index, {"id": ""})
+                                    if call.id:
+                                        slot["id"] = call.id
+                                    custom = getattr(call, "custom", None)
+                                    if custom:
+                                        slot["type"] = "custom"
+                                        target = slot.setdefault("custom", {"name": "", "input": ""})
+                                        target["name"] += custom.get("name") or ""
+                                        piece = custom.get("input") or ""
+                                        target["input"] += piece
+                                        progress.output("writing", len(piece))
+                                    if call.function:
+                                        slot["type"] = "function"
+                                        slot.setdefault("function", {"name": "", "arguments": ""})
+                                        slot["function"]["name"] += call.function.name or ""
+                                        piece = call.function.arguments or ""
+                                        slot["function"]["arguments"] += piece
+                                        progress.output("writing", len(piece))
+                            reasoning_piece, hit_field = _extract_reasoning(
+                                chunk.choices[0].delta
+                            )
+                            if reasoning_piece:
+                                # 思考内容照旧打进 lastline 供终端打印，同时攒起来交给
+                                # 多轮对话的调用方回传（不回传下一次请求会被判 400）
+                                if not reasoning_field:
+                                    reasoning_field = hit_field
+                                reasoning_parts.append(reasoning_piece)
+                                lastline = lastline + reasoning_piece
+                                progress.output("thinking", len(reasoning_piece))
                             if hasattr(chunk.choices[0].delta, "content"):
                                 content_piece = chunk.choices[0].delta.content or ""
                                 result = result + content_piece
                                 lastline = lastline + content_piece
                                 stream_line_buffer += content_piece
+                                if content_piece:
+                                    progress.output(
+                                        think_detector.feed(content_piece), len(content_piece)
+                                    )
                                 if stream_line_callback and "\n" in stream_line_buffer:
                                     line_parts = stream_line_buffer.split("\n")
                                     finished_lines = line_parts[:-1]
@@ -1088,21 +1450,42 @@ class BaseTranslate:
                                 except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
                                     pass
                 else:
+                    if tool_response_holder is not None and response.choices:
+                        finish_reason = response.choices[0].finish_reason
+                        tool_calls = {
+                            i: call.model_dump(exclude_none=True)
+                            for i, call in enumerate(response.choices[0].message.tool_calls or [])
+                        }
                     try:
                         result = response.choices[0].message.content
                     except:
                         raise ValueError(
                             "response.choices[0].message.content is None, no_candidates"
                         )
-                    if not isinstance(result, str) or result.strip() == "":
+                    if (not isinstance(result, str) or result.strip() == "") and not tool_calls:
                         raise ValueError(
                             "response.choices[0].message.content is empty"
                         )
+                    reasoning_piece, hit_field = _extract_reasoning(
+                        response.choices[0].message
+                    )
+                    if reasoning_piece:
+                        reasoning_field = reasoning_field or hit_field
+                        reasoning_parts.append(reasoning_piece)
+                if tool_response_holder is not None:
+                    tool_response_holder.clear()
+                    tool_response_holder.update(
+                        tool_calls=[call for _, call in sorted(tool_calls.items())],
+                        finish_reason=finish_reason,
+                    )
                 self._record_request_health(
                     time.monotonic() - request_started,
                     is_rate_limited=False,
                 )
                 getattr(self, "_client_failure_counts", {}).pop(id(client), None)
+                if reasoning_holder is not None:
+                    reasoning_holder["field"] = reasoning_field or REASONING_FIELD_NAMES[0]
+                    reasoning_holder["text"] = "".join(reasoning_parts)
                 return result, token
             except Exception as e:
                 is_rate_limited = isinstance(e, RateLimitError)
@@ -1128,11 +1511,18 @@ class BaseTranslate:
                 if isinstance(e, JobCancelledError):
                     raise
 
+                if getattr(self, "fail_fast", False):
+                    raise TranslationRequestError(str(e)) from e
+
+                last_failed_token = token
                 api_try_count += 1
                 api_attempts += 1
                 if max_retry_count is not None and api_attempts >= max_retry_count:
+                    # 把最后一次的真实错误带上：调用方（_batch_translate_common / 运行时错误
+                    # 记录）只看得到这一句，不带上原因就还得回上游日志翻为什么
+                    last_error = str(e).strip() or type(e).__name__
                     raise RuntimeError(
-                        f"ask_chatbot reached attempt limit ({max_retry_count})"
+                        f"API请求达到重试上限 ({max_retry_count})，最后一次错误：{last_error}"
                     ) from e
 
                 # gemini no_candidates
@@ -1204,18 +1594,22 @@ class BaseTranslate:
                     except Exception:
                         pass
 
+                progress.retrying()
                 await self._interruptible_sleep(sleep_time)
 
     def clean_up(self):
         pass
 
     async def shutdown(self):
-        if self._shutdown_done:
+        # 用 getattr 兜底：子类可以整个覆写 __init__（如 CRebuildTranslate 不持有模型客户端），
+        # 那样基类这套标记就不存在——关闭是收尾动作，不该因为"没跑过基类构造"抛异常。
+        if getattr(self, "_shutdown_done", False):
             return
         self._shutdown_done = True
 
         clients = [client for client, _ in getattr(self, "client_list", [])]
-        clients.extend(getattr(self, "_retired_clients", []))
+        retired_clients = getattr(self, "_retired_clients", [])
+        clients.extend(retired_clients)
         seen_clients: set[int] = set()
         for client in clients:
             if id(client) in seen_clients:
@@ -1248,7 +1642,7 @@ class BaseTranslate:
                             pass
                 except Exception:
                     pass
-        self._retired_clients.clear()
+        retired_clients.clear()
 
     def translate(self, trans_list: CTransList, gptdict=""):
         pass

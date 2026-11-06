@@ -10,6 +10,8 @@ from GalTransl import (
     CACHE_FOLDERNAME,
 )
 from GalTransl.Dictionary import CGptDict, CNormalDic
+from GalTransl.RuntimePaths import resolve_dict_dir
+from GalTransl.PluginSettings import get_plugin_config_section
 from asyncio import gather
 from tenacity import retry, stop_after_attempt, wait_fixed
 import httpx
@@ -19,9 +21,10 @@ from time import time
 from typing import Optional
 from random import choice
 from yaml import safe_load
-from os import path, sep
-from enum import Enum
+from os import path
+from pathlib import Path
 from importlib.metadata import version
+
 
 
 def build_httpx_proxy_kwargs(proxy_addr: Optional[str]) -> dict:
@@ -90,27 +93,6 @@ class CProxy:
         pass
 
 
-class CProblemType(Enum):
-    """
-    问题类型
-    """
-
-    词频过高 = 1
-    标点错漏 = 2
-    本无括号 = 2
-    本无引号 = 2
-    残留日文 = 3
-    丢失换行 = 4
-    多加换行 = 5
-    比日文长 = 6
-    字典使用 = 7
-    引入英文 = 8
-    比日文长严格 = 9
-    语言不通 = 10
-    缺控制符 = 11
-    独白男他 = 12
-
-
 class CProjectConfig:
     def __init__(self, projectPath: str, config_name=CONFIG_FILENAME) -> None:
         self.projectConfig = loadConfigFile(path.join(projectPath, config_name))
@@ -148,6 +130,9 @@ class CProjectConfig:
         self.name_replaceDict = {}  # 名字替换字典
         self.tPlugins = []  # 文本插件列表
         self.fPlugins = []  # 文件插件列表
+        self.pPlugins = None  # None means problem plugins have not been loaded yet.
+        self._problem_type_catalog = None
+        self.fPluginAuto = False  # filePlugin: auto 时按文件逐个识别插件
         self.tokenPool = None  # 令牌池
         self.proxyPool = None  # 代理池
         self.endpointQueue = None  # 端点队列
@@ -157,6 +142,9 @@ class CProjectConfig:
         self.translation_guideline=""
         self.non_interactive: bool = False  # 非交互模式（前端启动时为True）
         self.runtime_project_dir: str = projectPath
+        # 只翻译这些输入文件（文件名匹配）；空 = 全部。试译/部分重翻场景由
+        # JobSpec.input_files 注入，run_job 阶段设置，翻译流程读取。
+        self.runtime_input_files: list = []
         
 
     def getProjectConfig(self) -> dict:
@@ -169,16 +157,16 @@ class CProjectConfig:
         return self.projectDir
 
     def getTextPluginList(self) -> list:
-        if "plugin" not in self.projectConfig:
-            return []
-        else:
-            return self.projectConfig["plugin"]["textPlugins"]
+        return self.getPluginConfigSection().get("textPlugins") or []
 
     def getFilePlugin(self) -> str:
-        if "plugin" not in self.projectConfig:
-            return "file_galtransl_json"
-        else:
-            return self.projectConfig["plugin"]["filePlugin"]
+        return self.getPluginConfigSection().get("filePlugin", "file_galtransl_json")
+
+    def getProblemPluginList(self) -> list:
+        # Existing projects keep the built-in checks; an explicit [] disables them.
+        return self.getPluginConfigSection().get(
+            "problemPlugins", ["problem_common"]
+        ) or []
 
     def getInputPath(self) -> str:
         return self.inputPath
@@ -193,7 +181,7 @@ class CProjectConfig:
         return self.projectConfig["common"]
 
     def getPluginConfigSection(self) -> dict:
-        return self.projectConfig["plugin"]
+        return get_plugin_config_section(self.projectConfig)
 
     def getlbSymbol(self) -> str:
         lbSymbol = self.projectConfig["common"].get("linebreakSymbol", "auto")
@@ -225,21 +213,32 @@ class CProjectConfig:
     def getKey(self, key: str, default: None = None) -> str | bool | int | None:
         return self.keyValues.get(key, default)
 
-    def getProblemAnalyzeConfig(self, backendName: str) -> list[CProblemType]:
-        if backendName not in self.projectConfig["problemAnalyze"]:
+    def getProblemAnalyzeConfig(self, backendName: str) -> list[str]:
+        """Return configured names; plugins own and interpret their problem types."""
+        analyze = self.projectConfig.get("problemAnalyze")
+        if analyze is None:
+            analyze = {}
+        if not isinstance(analyze, dict):
+            raise ValueError("problemAnalyze configuration must be an object")
+        configured = analyze.get(backendName)
+        if configured is None and backendName == "problemList":
+            configured = analyze.get("GPT35")
+        if configured is not None:
+            if isinstance(configured, str):
+                configured = configured.splitlines()
+            if not isinstance(configured, list) or any(not isinstance(item, str) for item in configured):
+                raise ValueError(f"problemAnalyze.{backendName} must be a list of names or a newline-separated string")
+            return [item.strip() for item in configured if item.strip()]
+        if backendName != "problemList":
             return []
-        result: list[CProblemType] = []
-        for i in self.projectConfig["problemAnalyze"][backendName]:
-            result.append(CProblemType[i])
+        if self._problem_type_catalog is None:
+            from GalTransl.Problem import list_problem_types
 
-        return result
+            self._problem_type_catalog = list_problem_types(self.getProjectDir())
+        return [item["name"] for item in self._problem_type_catalog if item["default_enabled"]]
 
     def getProblemAnalyzeArinashiDict(self) -> dict:
-        if "arinashiDict" not in self.projectConfig["problemAnalyze"]:
-            return {}
-        elif not self.projectConfig["problemAnalyze"]["arinashiDict"]:
-            return {}
-        return self.projectConfig["problemAnalyze"]["arinashiDict"]
+        return (self.projectConfig.get("problemAnalyze") or {}).get("arinashiDict") or {}
 
     def refreshProxyEnabledFlag(self) -> None:
         self.keyValues["internals.enableProxy"] = has_usable_proxy_config(
@@ -337,12 +336,16 @@ def initDictList(config: dict, dictDir: str, projectDir: str) -> Optional[list[s
     if not config:
         return []
     result: list[str] = []
+    project_root = Path(projectDir).expanduser().resolve()
+    configured_dict_dir = Path(dictDir or ".").expanduser()
+    resource_dict_dir = resolve_dict_dir(configured_dict_dir)
     for entry in config:
+        entry = str(entry)
         if entry.startswith("(project_dir)"):
-            entry = entry.replace("(project_dir)", "")
-            result.append(str(path.abspath(projectDir) + sep + entry))
+            entry = entry.removeprefix("(project_dir)").lstrip("/\\")
+            result.append(str((project_root / entry).resolve()))
         else:
-            result.append(str(path.abspath(dictDir) + sep + entry))
+            result.append(str((resource_dict_dir / entry).resolve()))
     return result
 
 

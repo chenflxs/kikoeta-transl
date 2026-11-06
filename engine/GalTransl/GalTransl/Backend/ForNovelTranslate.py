@@ -15,15 +15,18 @@ from GalTransl.Cache import save_transCache_to_json
 from GalTransl.Dictionary import CGptDict
 from GalTransl.Utils import extract_code_blocks
 from GalTransl.Backend.Prompts import (
-    FORGAL_TSV_SYSTEM,
+    FORNOVEL_FOLLOWUP_PROMPT,
+    FORGAL_MARKDOWN_SYSTEM,
     FORNOVEL_TRANS_PROMPT_EN,
     H_WORDS_LIST,
 )
-from GalTransl.Backend.BaseTranslate import BaseTranslate
+from GalTransl.Backend.MultiTurnTranslate import MultiTurnTranslate
 from openai._types import NOT_GIVEN
 
 
-class ForNovelTranslate(BaseTranslate):
+class ForNovelTranslate(MultiTurnTranslate):
+    followup_prompt = FORNOVEL_FOLLOWUP_PROMPT
+
     # init
     def __init__(
         self,
@@ -34,7 +37,7 @@ class ForNovelTranslate(BaseTranslate):
     ):
         super().__init__(config, eng_type, proxy_pool, token_pool)
         self.trans_prompt = FORNOVEL_TRANS_PROMPT_EN
-        self.system_prompt = FORGAL_TSV_SYSTEM
+        self.system_prompt = FORGAL_MARKDOWN_SYSTEM
         self._apply_internal_prompt_template_overrides()
         # enhance_jailbreak
         if val := config.getKey("gpt.enhance_jailbreak"):
@@ -87,12 +90,10 @@ class ForNovelTranslate(BaseTranslate):
             else:
                 assistant_prompt = ""
 
-            messages = []
-            messages.append({"role": "system", "content": self.system_prompt})
-            prompt_req = self._apply_history_result(prompt_template, filename)
-            messages.append({"role": "user", "content": prompt_req})
-            if assistant_prompt:
-                messages.append({"role": "assistant", "content": assistant_prompt})
+            messages, session, prompt_req = self._prepare_translation_messages(
+                prompt_template, input_src, gptdict, trans_list, filename,
+                proofread=proofread, assistant_prompt=assistant_prompt,
+            )
 
             if self.pj_config.active_workers == 1:
                 LOGGER.info(
@@ -128,12 +129,16 @@ class ForNovelTranslate(BaseTranslate):
                 return True
             resp = None
             self._clear_chatbot_state()
-            resp, token = await self.ask_chatbot(
+            reasoning = {}
+            resp, token = await self._ask_translation_chatbot(
+                session,
+                reasoning_holder=reasoning,
                 messages=messages,
                 file_name=f"{filename}:{idx_tip}",
                 base_try_count=retry_count,
                 stream_line_callback=_parse_stream_lines,
                 max_retry_count=self.max_api_retries,
+                progress_file=filename,
             )
 
             result_text = resp or ""
@@ -186,6 +191,9 @@ class ForNovelTranslate(BaseTranslate):
                     if i >= len(trans_list) - 1:
                         break
 
+            if error_message or stream_parse_error_message or success_count != len(trans_list):
+                self._raise_parse_error_for_auto(error_message or stream_parse_error_message or f"译文缺句：{success_count}/{len(trans_list)}")
+
             if success_count > 0 and not stream_parse_error_message:
                 error_flag = False  # 部分解析
 
@@ -232,13 +240,13 @@ class ForNovelTranslate(BaseTranslate):
                     )
                 # 单句重试仍错则重置会话
                 if retry_count == 3 and self.smartRetry:
-                    self.last_translations[filename] = ""
+                    self.reset_conversation(filename)
                     LOGGER.warning(
                         f"[解析错误][{filename}:{idx_tip}]连续3次出错，尝试清空上文"
                     )
                 # 重试中止
                 if retry_count >= 4:
-                    self.last_translations[filename] = ""
+                    self.reset_conversation(filename)
                     LOGGER.error(
                         f"[解析错误][{filename}:{idx_tip}]解析反复出错，跳过本轮翻译"
                     )
@@ -261,6 +269,10 @@ class ForNovelTranslate(BaseTranslate):
                 )
 
             # 翻译完成，收尾
+            self._remember_translation_turn(
+                session, prompt_req, resp or "", reasoning, trans_list,
+                success_count, error_message, assistant_prompt,
+            )
             break
         return success_count, result_trans_list
 
@@ -335,9 +347,6 @@ class ForNovelTranslate(BaseTranslate):
             failed_markers=("(翻译失败)", "(Failed)"),
             h_words_list=H_WORDS_LIST,
         )
-
-    def reset_conversation(self, filename):
-        self.last_translations[filename] = ""
 
     def _format_restore_context_line(self, current_tran: CSentense) -> str:
         return f"{current_tran.pre_dst}\t{current_tran.index}"

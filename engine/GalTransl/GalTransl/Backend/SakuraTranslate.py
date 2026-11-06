@@ -182,6 +182,7 @@ class CSakuraTranslate(BaseTranslate):
                 frequency_penalty=self.frequency_penalty,
                 top_p=self.top_p,
                 max_tokens=len(input_str) * 2,
+                progress_file=filename,
             )
 
             result_list = resp.strip("\n").split("\n")
@@ -231,6 +232,7 @@ class CSakuraTranslate(BaseTranslate):
                 result_trans_list.append(trans_list[i])
 
             if error_flag:
+                self._raise_parse_error_for_auto(error_message)
                 try:
                     from GalTransl.server import record_runtime_error
                     record_runtime_error(

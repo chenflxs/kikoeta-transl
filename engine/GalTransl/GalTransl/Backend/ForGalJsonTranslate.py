@@ -16,19 +16,28 @@ from GalTransl.Cache import save_transCache_to_json
 from GalTransl.Dictionary import CGptDict
 from GalTransl.Utils import extract_code_blocks, fix_quotes
 from GalTransl.Backend.Prompts import (
+    FORGAL_JSON_FOLLOWUP_PROMPT,
     FORGAL_JSON_SYSTEM_PROMPT,
     FORGAL_JSON_TRANS_PROMPT,
     H_WORDS_LIST,
 )
+from GalTransl.Backend.MultiTurnTranslate import MultiTurnTranslate
 from GalTransl.Backend.BaseTranslate import BaseTranslate
 from openai._types import NOT_GIVEN
 
 
-class ForGalJsonTranslate(BaseTranslate):
+class ForGalJsonTranslate(MultiTurnTranslate):
+    followup_prompt = FORGAL_JSON_FOLLOWUP_PROMPT
+    default_trans_prompt = FORGAL_JSON_TRANS_PROMPT
+    default_system_prompt = FORGAL_JSON_SYSTEM_PROMPT
+
     _SIGCHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
 
     def _encode_sig_jsonline(self, sig: str, obj: dict) -> str:
         return f"{sig}|" + json.dumps(obj, ensure_ascii=False)
+
+    def _format_translation_input(self, lines, proofread=False):
+        return "\n".join(lines)
 
     # init
     def __init__(
@@ -39,8 +48,8 @@ class ForGalJsonTranslate(BaseTranslate):
         token_pool: COpenAITokenPool,
     ):
         super().__init__(config, eng_type, proxy_pool, token_pool)
-        self.trans_prompt = FORGAL_JSON_TRANS_PROMPT
-        self.system_prompt = FORGAL_JSON_SYSTEM_PROMPT
+        self.trans_prompt = self.default_trans_prompt
+        self.system_prompt = self.default_system_prompt
         self._apply_internal_prompt_template_overrides()
         # enhance_jailbreak
         if val := config.getKey("gpt.enhance_jailbreak"):
@@ -108,7 +117,7 @@ class ForGalJsonTranslate(BaseTranslate):
                 del tmp_obj["name"]
 
             input_list.append(self._encode_sig_jsonline(sig, tmp_obj))
-        input_src = "\n".join(input_list)
+        input_src = self._format_translation_input(input_list, proofread)
 
         self.restore_context(trans_list, self.contextNum, filename)
 
@@ -123,12 +132,10 @@ class ForGalJsonTranslate(BaseTranslate):
             else:
                 assistant_prompt = ""
 
-            messages = []
-            messages.append({"role": "system", "content": self.system_prompt})
-            prompt_req = self._apply_history_result(prompt_template, filename)
-            messages.append({"role": "user", "content": prompt_req})
-            if assistant_prompt:
-                messages.append({"role": "assistant", "content": assistant_prompt})
+            messages, session, prompt_req = self._prepare_translation_messages(
+                prompt_template, input_src, gptdict, trans_list, filename,
+                proofread=proofread, assistant_prompt=assistant_prompt,
+            )
 
             if self.pj_config.active_workers == 1:
                 LOGGER.info(
@@ -178,12 +185,18 @@ class ForGalJsonTranslate(BaseTranslate):
 
             resp = None
             self._clear_chatbot_state()
-            resp, token = await self.ask_chatbot(
+            reasoning = {}
+            resp, token = await self._ask_translation_batch(
+                session,
+                trans_list=trans_list, sig_list=sig_list, proofread=proofread,
+                n_symbol=n_symbol,
+                reasoning_holder=reasoning,
                 messages=messages,
                 file_name=f"{filename}:{idx_tip}",
                 base_try_count=retry_count,
                 stream_line_callback=_parse_stream_lines,
                 max_retry_count=getattr(self, "max_api_retries", 6),
+                progress_file=filename,
             )
 
             result_text = resp or ""
@@ -242,6 +255,9 @@ class ForGalJsonTranslate(BaseTranslate):
                     if i >= len(trans_list) - 1:
                         break
 
+            if error_message or stream_parse_error_message or success_count != len(trans_list):
+                self._raise_parse_error_for_auto(error_message or stream_parse_error_message or f"译文缺句：{success_count}/{len(trans_list)}")
+
             if success_count > 0 and not stream_parse_error_message:
                 error_flag = False  # 部分解析
 
@@ -288,13 +304,13 @@ class ForGalJsonTranslate(BaseTranslate):
                     )
                 # 单句重试仍错则重置会话
                 if retry_count == 3 and self.smartRetry:
-                    self.last_translations[filename] = ""
+                    self.reset_conversation(filename)
                     LOGGER.warning(
                         f"[解析错误][{filename}:{idx_tip}]连续3次出错，尝试清空上文"
                     )
                 # 重试中止
                 if retry_count >= 4:
-                    self.last_translations[filename] = ""
+                    self.reset_conversation(filename)
                     LOGGER.error(
                         f"[解析错误][{filename}:{idx_tip}]解析反复出错，跳过本轮翻译"
                     )
@@ -317,8 +333,15 @@ class ForGalJsonTranslate(BaseTranslate):
                 )
 
             # 翻译完成，收尾
+            self._remember_translation_turn(
+                session, prompt_req, resp or "", reasoning, trans_list,
+                success_count, error_message, assistant_prompt,
+            )
             break
         return success_count, result_trans_list
+
+    async def _ask_translation_batch(self, session, *, trans_list, sig_list, proofread, n_symbol="", **kwargs):
+        return await self._ask_translation_chatbot(session, **kwargs)
 
     def _parse_jsonline_result_line(
         self,
@@ -409,9 +432,6 @@ class ForGalJsonTranslate(BaseTranslate):
             h_words_list=H_WORDS_LIST,
             ensure_last_translations=True,
         )
-
-    def reset_conversation(self, filename=""):
-        self.last_translations[filename] = ""
 
     def _format_restore_context_line(self, current_tran: CSentense) -> str:
         speaker_name = current_tran.get_speaker_name()

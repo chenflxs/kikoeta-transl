@@ -3,12 +3,16 @@ from os.path import exists as isPathExists
 from os import makedirs as mkdir
 import logging, colorlog
 from GalTransl import LOGGER, TRANSLATOR_SUPPORTED, new_version, GALTRANSL_VERSION,NEED_OpenAITokenPool
-from GalTransl.GTPlugin import GTextPlugin, GFilePlugin
+from GalTransl.GTPlugin import GTextPlugin, GFilePlugin, GProblemPlugin
+from GalTransl.Problem import load_problem_plugins, finalize_problem_plugins
 from GalTransl.COpenAI import COpenAITokenPool, init_sakura_endpoint_queue
 from GalTransl.yapsy.PluginManager import PluginManager
 from GalTransl.ConfigHelper import CProjectConfig, CProxyPool
 from GalTransl.Frontend.LLMTranslate import doLLMTranslate
 from GalTransl.i18n import get_text,GT_LANG
+from GalTransl.RuntimePaths import get_plugins_dir
+from GalTransl.FilePluginDetect import is_auto as is_auto_file_plugin, detect_file_plugins
+from GalTransl.Utils import get_file_list
 from GalTransl.CSplitter import (
     DictionaryCountSplitter,
     EqualPartsSplitter,
@@ -95,7 +99,7 @@ async def run_galtransl(cfg: CProjectConfig, translator: str, stop_event=None):
             name = name.replace("(project_dir)", "")
             return os.path.join(PROJECT_DIR, "plugins", name, f"{name}.yaml")
         else:
-            return os.path.join(os.path.abspath("plugins"), name, f"{name}.yaml")
+            return str(get_plugins_dir() / name / f"{name}.yaml")
 
     def print_plugin_list(plugin_manager: PluginManager):
         LOGGER.info("插件列表:")
@@ -187,8 +191,8 @@ async def run_galtransl(cfg: CProjectConfig, translator: str, stop_event=None):
                 mkdir(dir_path)
         # 插件初始化
         plugin_manager = PluginManager(
-            {"GTextPlugin": GTextPlugin, "GFilePlugin": GFilePlugin},
-            ["plugins", os.path.join(PROJECT_DIR, "plugins")],
+            {"GTextPlugin": GTextPlugin, "GFilePlugin": GFilePlugin, "GProblemPlugin": GProblemPlugin},
+            [str(get_plugins_dir()), os.path.join(PROJECT_DIR, "plugins")],
         )
         plugin_manager.locatePlugins()
         # 打印插件列表
@@ -204,7 +208,17 @@ async def run_galtransl(cfg: CProjectConfig, translator: str, stop_event=None):
             else:
                 LOGGER.warning(f"未找到文本插件: {tname}，跳过该插件")
         fname = cfg.getFilePlugin()
-        if fname:
+        if is_auto_file_plugin(fname):
+            # 自动识别：按输入目录里实际出现的文件类型加载所需的全部文件插件
+            detected = detect_file_plugins(get_file_list(cfg.getInputPath()), cfg.getProjectDir())
+            fnames = sorted({n for n in detected.values() if n})
+            unknown = [os.path.basename(p) for p, n in detected.items() if not n]
+            if unknown:
+                LOGGER.warning(f"自动识别文件插件：以下文件无法识别格式，将被跳过: {unknown[:20]}")
+            LOGGER.info(f"自动识别文件插件: {fnames or '无'}")
+        else:
+            fnames = [fname] if fname else []
+        for fname in fnames:
             info_path = get_pluginInfo_path(fname)
             candidate = plugin_manager.getPluginCandidateByInfoPath(info_path)
             assert candidate, f"未找到文件插件: {fname}，请检查设置"
@@ -294,6 +308,8 @@ async def run_galtransl(cfg: CProjectConfig, translator: str, stop_event=None):
 
         cfg.tPlugins = text_plugins
         cfg.fPlugins = file_plugins
+        load_problem_plugins(cfg)
+        cfg.fPluginAuto = is_auto_file_plugin(cfg.getFilePlugin())
         cfg.tokenPool = OpenAITokenPool
         cfg.proxyPool = proxyPool
         cfg.input_splitter = input_splitter
@@ -308,6 +324,8 @@ async def run_galtransl(cfg: CProjectConfig, translator: str, stop_event=None):
         end_time = time.time()
         LOGGER.info(f"总耗时: {end_time-start_time:.3f}s")
     finally:
+        finalize_problem_plugins(cfg)
         # 移除当前 job 添加的 handler，不影响其他并发 job
         for h in _job_handlers:
             LOGGER.removeHandler(h)
+            h.close()

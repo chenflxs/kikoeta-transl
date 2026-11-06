@@ -55,6 +55,36 @@ class GTextPlugin(IPlugin):
         pass
 
 
+class GProblemPlugin(IPlugin):
+    """Translation checks run after destination text processing."""
+
+    problem_types = ()
+
+    def get_problem_types(self) -> list[dict]:
+        """Declare check names and descriptions without requiring gtp_init."""
+        types = []
+        for item in self.problem_types:
+            if isinstance(item, dict):
+                types.append(dict(item))
+            else:
+                types.append({
+                    "name": item if isinstance(item, str) else item.name,
+                    "description": getattr(item, "description", ""),
+                    "default_enabled": getattr(item, "default_enabled", False),
+                })
+        return types
+
+    def gtp_init(self, plugin_conf: dict, project_conf: dict):
+        pass
+
+    def check(self, tran: CSentense, project_config, gpt_dict=None) -> list[str]:
+        """Return problem messages without changing the sentence or its problem field."""
+        raise NotImplementedError("This method must be implemented by the plugin.")
+
+    def gtp_final(self):
+        pass
+
+
 class GFilePlugin(IPlugin):
     def gtp_init(self, plugin_conf: dict, project_conf: dict):
         """
@@ -72,6 +102,10 @@ class GFilePlugin(IPlugin):
         :return: A list of objects with message and name(optional).返回一个包含message和name(可空)的对象列表。
         """
         raise NotImplementedError("This method must be implemented by the plugin.")
+
+    def reload_file(self, file_path: str) -> list:
+        """重新提取原文；持有提取缓存的插件应覆盖此方法并刷新自己的缓存。"""
+        return self.load_file(file_path)
 
     def save_file(self, file_path: str, transl_json: list):
         """

@@ -13,7 +13,7 @@
 """
 
 from typing import List, Dict, Any, Optional, Union, Tuple
-from os import makedirs, cpu_count, sep as os_sep,listdir
+from os import makedirs, cpu_count, sep as os_sep,listdir, path as os_path
 from os.path import join as joinpath, exists as isPathExists, dirname
 from venv import logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -257,7 +257,10 @@ def preprocess_trans_list(trans_list, projectConfig, pre_dic, tPlugins=None):
             "file_galtransl_json",
             "file_mtbench_aio",
         ]:
-            if projectConfig.select_translator not in ["ForNovel"]:
+            if projectConfig.select_translator not in ("ForNovel", "ForNovel-tool") and not (
+                projectConfig.select_translator == "auto-translate"
+                and not getattr(tran, "source_file_has_name", bool(tran.speaker))
+            ):
                 tran.analyse_dialogue()
 
         tran.post_src = pre_dic.do_replace(tran.post_src, tran)
@@ -365,6 +368,18 @@ async def doLLMTranslate(
             return True
         raise RuntimeError(f"{projectConfig.getInputPath()}中没有待翻译的文件")
 
+    # 只翻译指定文件子集（试译/部分重翻场景）。按文件名（basename）匹配，
+    # 兼容嵌套目录；指定了但一个都不存在时报错，避免静默全量翻译。
+    runtime_input_files = getattr(projectConfig, "runtime_input_files", None)
+    if runtime_input_files:
+        wanted = {os_path.basename(f) for f in runtime_input_files}
+        file_list = [f for f in file_list if os_path.basename(f) in wanted]
+        if not file_list:
+            raise RuntimeError(
+                f"指定的输入文件 {sorted(wanted)} 在 {projectConfig.getInputPath()} 中都不存在"
+            )
+        LOGGER.info(f"本次只翻译指定的 {len(file_list)} 个文件: {sorted(os_path.basename(f) for f in file_list)}")
+
     # 按文件名自然排序（处理数字部分）
     import re
 
@@ -380,9 +395,16 @@ async def doLLMTranslate(
     # ---- 2. 读取所有文件并切分为 chunk ----
     # 使用线程池并发读文件（IO 密集型），同时通过 fPlugins 解析为 json_list
     file_loader_workers = max(1, min(cpu_count() or 1, 8))
+    if getattr(projectConfig, "fPluginAuto", False):
+        # filePlugin: auto —— 每个文件只交给识别出的那个插件（例如 txt 插件会把
+        # 任何文件都当纯文本读，不能让它去“试” json）；识别不了的文件跳过
+        file_plugin_routes = route_file_plugins(file_list, fPlugins, projectConfig.getProjectDir())
+        file_list = [f for f in file_list if file_plugin_routes.get(f)]
+    else:
+        file_plugin_routes = {f: fPlugins for f in file_list}
     with ThreadPoolExecutor(max_workers=file_loader_workers) as executor:
         future_to_file = {
-            executor.submit(fplugins_load_file, file_path, fPlugins): file_path
+            executor.submit(fplugins_load_file, file_path, file_plugin_routes[file_path]): file_path
             for file_path in file_list
         }
         for future in as_completed(future_to_file):
@@ -391,7 +413,13 @@ async def doLLMTranslate(
             try:
                 json_list, save_func = future.result()
                 projectConfig.file_save_funcs[file_path] = save_func
-                total_chunks.extend(input_splitter.split(json_list, file_path))
+                chunks = input_splitter.split(json_list, file_path)
+                file_has_name = any("name" in row or "names" in row for row in json_list)
+                for chunk in chunks:
+                    for tran in chunk.trans_list:
+                        tran.source_file_has_name = file_has_name
+                        tran.source_file_path = file_path
+                total_chunks.extend(chunks)
                 if eng_type == "GenDic":
                     all_jsons.extend(json_list)
             except Exception as exc:
@@ -817,12 +845,24 @@ async def init_gptapi(
     eng_type = projectConfig.select_translator
 
     match eng_type:
-        case "ForGal-tsv":
-            from GalTransl.Backend.ForGalTsvTranslate import ForGalTsvTranslate
-            return ForGalTsvTranslate(projectConfig, eng_type, proxyPool, tokenPool)
+        case "auto-translate":
+            from GalTransl.Backend.AutoTranslate import AutoTranslate
+            return AutoTranslate(projectConfig, eng_type, proxyPool, tokenPool)
+        case "ForGal-tool":
+            from GalTransl.Backend.ForGalToolTranslate import ForGalToolTranslate
+            return ForGalToolTranslate(projectConfig, eng_type, proxyPool, tokenPool)
+        case "ForGal-markdown":
+            from GalTransl.Backend.ForGalMarkdownTranslate import ForGalMarkdownTranslate
+            return ForGalMarkdownTranslate(projectConfig, eng_type, proxyPool, tokenPool)
         case "ForNovel":
             from GalTransl.Backend.ForNovelTranslate import ForNovelTranslate
             return ForNovelTranslate(projectConfig, eng_type, proxyPool, tokenPool)
+        case "ForNovel-tool":
+            from GalTransl.Backend.ForNovelToolTranslate import ForNovelToolTranslate
+            return ForNovelToolTranslate(projectConfig, eng_type, proxyPool, tokenPool)
+        case "ForGal-tsv":
+            from GalTransl.Backend.ForGalTsvTranslate import ForGalTsvTranslate
+            return ForGalTsvTranslate(projectConfig, eng_type, proxyPool, tokenPool)
         case "ForGal-json":
             from GalTransl.Backend.ForGalJsonTranslate import ForGalJsonTranslate
             return ForGalJsonTranslate(projectConfig, eng_type, proxyPool, tokenPool)
@@ -840,6 +880,26 @@ async def init_gptapi(
             return GenDic(projectConfig, eng_type, proxyPool, tokenPool)
         case _:
             raise ValueError(f"不支持的翻译引擎类型 {eng_type}")
+
+
+def route_file_plugins(file_list: List[str], fPlugins: list, project_dir: str) -> Dict[str, list]:
+    """filePlugin: auto 时给每个文件挑插件，返回 {file_path: [plugin]}（识别不了的是空列表）。"""
+    from GalTransl.FilePluginDetect import detect_file_plugins
+
+    by_name = {}
+    for plugin in fPlugins:
+        if isinstance(plugin, str):
+            continue
+        by_name[plugin.yaml_dict["Core"]["Module"]] = plugin
+    routes = {}
+    for file_path, name in detect_file_plugins(file_list, project_dir).items():
+        plugin = by_name.get((name or "").replace("(project_dir)", ""))
+        if plugin is None:
+            LOGGER.warning(f"自动识别文件插件：{file_path} 没有匹配的文件插件，已跳过")
+        else:
+            LOGGER.debug(f"自动识别文件插件：{file_path} -> {plugin.name}")
+        routes[file_path] = [plugin] if plugin else []
+    return routes
 
 
 def fplugins_load_file(file_path: str, fPlugins: list) -> Tuple[List[Dict], Any]:

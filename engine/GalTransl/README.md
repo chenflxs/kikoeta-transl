@@ -29,7 +29,8 @@ EPUB/MTool JSON/Translator++/MTBench 等当前音视频字幕流程不用的格�
 - 上游已删除 `ForGal-tsv`；为兼容本项目已有设置，保留 7.4.0 的 TSV 后端及其两段提示词，
   并注册到新版引擎选择和令牌池。
 - 保留旧 OpenAI SDK 的 HTTP 客户端回退、缓存回调兼容和安全的项目目录读取。
-- 自动检查更新线程保持 daemon 模式，避免退出时等待更新网络请求；任务结束关闭日志句柄。
+- 移除内置引擎的联网版本检测、后台更新线程、更新日志提示和 `/api/version/check` 接口；保留当前版本信息。
+- 任务结束关闭日志句柄。
 
 更新时应对照固定提交重新应用上述差异，并运行 `python engine/checks/galtransl_integration_check.py`。
 该测试使用本机模拟 OpenAI 接口检查完整翻译、时间轴、缓存续翻、请求参数、旧 TSV 和取消任务，

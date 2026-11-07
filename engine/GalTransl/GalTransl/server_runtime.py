@@ -13,7 +13,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from packaging.version import InvalidVersion, Version
 from yaml import safe_load
 
 from GalTransl import CACHE_FOLDERNAME
@@ -26,22 +25,6 @@ from GalTransl.ProblemWhiteList import (
 
 def _utcnow_text() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
-
-
-def _normalize_version_text(value: str) -> str:
-    return value.strip().removeprefix("v").removeprefix("V")
-
-
-def _has_newer_release(current_version: str, latest_version: str | None) -> bool:
-    if not latest_version:
-        return False
-
-    current_text = _normalize_version_text(current_version)
-    latest_text = _normalize_version_text(latest_version)
-    try:
-        return Version(latest_text) > Version(current_text)
-    except InvalidVersion:
-        return latest_text != current_text
 
 
 def _normalize_project_dir(project_dir: str) -> str:

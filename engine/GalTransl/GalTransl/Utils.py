@@ -7,7 +7,6 @@ import codecs
 from pathlib import Path
 from typing import Tuple, List
 from re import compile
-import requests
 import re
 from GalTransl.RuntimePaths import get_active_translation_guidelines_dir
 
@@ -174,16 +173,6 @@ def get_n_symbol(src_text: str):
         n_symbols.append("\\n")
 
     return n_symbols
-
-
-def check_for_tool_updates(new_version):
-    try:
-        release_api = "https://api.github.com/repos/xd2333/GalTransl/releases/latest"
-        response = requests.get(release_api, timeout=5).json()
-        latest_release = response["tag_name"]
-        new_version.append(latest_release)
-    except Exception:
-        pass
 
 
 def find_most_repeated_substring(text):

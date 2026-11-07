@@ -20,7 +20,7 @@ import sys
 from datetime import datetime
 from yaml import safe_load, safe_dump
 
-from GalTransl import TRANSLATOR_SUPPORTED, INPUT_FOLDERNAME, OUTPUT_FOLDERNAME, CACHE_FOLDERNAME, GALTRANSL_VERSION, new_version
+from GalTransl import TRANSLATOR_SUPPORTED, INPUT_FOLDERNAME, OUTPUT_FOLDERNAME, CACHE_FOLDERNAME, GALTRANSL_VERSION
 from GalTransl import GUIDELINES_FOLDERNAME, DEFAULT_GUIDELINE_NAME
 from GalTransl.Service import JobSpec, JobState, create_job_state, run_job
 from GalTransl.AppSettings import load_app_settings, save_app_settings
@@ -77,7 +77,6 @@ from GalTransl.server_runtime import (
     _CACHE_APPEND_SUFFIX,
     _ConcurrentLimitError,
     _cache_entry_is_translated,
-    _has_newer_release,
     _normalize_project_dir,
     _normalize_retran_terms,
     _parse_runtime_job_started_at_ns,
@@ -3327,16 +3326,6 @@ def build_handler(registry: JobRegistry):
                 return
             if path == "/api/program-dir":
                 self._send_json({"path": _program_dir()})
-                return
-            if path == "/api/version/check":
-                latest_version = new_version[0] if new_version else None
-                self._send_json(
-                    {
-                        "version": GALTRANSL_VERSION,
-                        "latest_version": latest_version,
-                        "update_available": _has_newer_release(GALTRANSL_VERSION, latest_version),
-                    }
-                )
                 return
             if path == "/api/translators":
                 _hidden_translators = {"show-plugs", "dump-name", "rebuildr", "rebuilda"}

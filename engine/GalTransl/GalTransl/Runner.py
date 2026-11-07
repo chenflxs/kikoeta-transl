@@ -2,7 +2,7 @@ import os, time, sys, datetime, threading
 from os.path import exists as isPathExists
 from os import makedirs as mkdir
 import logging, colorlog
-from GalTransl import LOGGER, TRANSLATOR_SUPPORTED, new_version, GALTRANSL_VERSION,NEED_OpenAITokenPool
+from GalTransl import LOGGER, TRANSLATOR_SUPPORTED, NEED_OpenAITokenPool
 from GalTransl.GTPlugin import GTextPlugin, GFilePlugin, GProblemPlugin
 from GalTransl.Problem import load_problem_plugins, finalize_problem_plugins
 from GalTransl.COpenAI import COpenAITokenPool, init_sakura_endpoint_queue
@@ -274,15 +274,6 @@ async def run_galtransl(cfg: CProjectConfig, translator: str, stop_event=None):
             _raise_if_stop_requested(stop_event)
             sakura_endpoint_queue = await init_sakura_endpoint_queue(cfg)
             cfg.endpointQueue = sakura_endpoint_queue
-
-        # 检查更新
-        if new_version and new_version[0] != GALTRANSL_VERSION:
-            LOGGER.info(
-                f"\033[32m检测到新版本: {new_version[0]}\033[0m  当前版本: {GALTRANSL_VERSION}"
-            )
-            LOGGER.info(
-                f"\033[32m更新地址：https://github.com/xd2333/GalTransl/releases\033[0m"
-            )
 
         if project_conf.get("splitFile", "no") in ["Num","Equal"]:
             val = project_conf.get("splitFile", "no")

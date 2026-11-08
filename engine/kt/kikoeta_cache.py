@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from .paths import DATA_DIR
 
@@ -16,6 +17,22 @@ CACHE_DIR = DATA_DIR / "kikoeta_cache"
 INDEX_PATH = CACHE_DIR / "index.json"
 CACHE_LIMIT = 5
 _LOCK = RLock()
+
+
+def source_base(value: object) -> str:
+    """Only persist a site address, never URL credentials or access tokens."""
+    if not isinstance(value, str):
+        return ""
+    try:
+        parts = urlsplit(value.strip())
+        if (parts.scheme not in {"http", "https"} or not parts.hostname
+                or parts.username is not None or parts.password is not None
+                or parts.query or parts.fragment):
+            return ""
+        parts.port  # Validate malformed ports without changing the configured URL.
+        return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+    except ValueError:
+        return ""
 
 
 def cache_completed_job(job: Any) -> int:
@@ -77,6 +94,7 @@ def cache_completed_job(job: Any) -> int:
                 {
                     "job_id": job.job_id,
                     "work_id": work_id,
+                    "source_base": source_base(job.cache_context.get("source_base")),
                     "completed_at": datetime.now(timezone.utc).isoformat(
                         timespec="seconds"
                     ),
@@ -102,6 +120,7 @@ def list_cached_results() -> list[dict[str, Any]]:
             {
                 "job_id": record["job_id"],
                 "work_id": record["work_id"],
+                "source_base": source_base(record.get("source_base")),
                 "completed_at": record["completed_at"],
                 "files": [
                     {

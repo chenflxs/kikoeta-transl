@@ -21,6 +21,8 @@ Kikoeta 的 Windows 翻译伴侣：将音视频或已有字幕处理为带时间
 
 已有缓存可在“输出”页点击“将缓存推送到 LLS”，上传最近 5 次 Kikoeta 任务中保留的 LRC，无需开启自动同步。点击时会保存并使用当前地址和验证配置；页面显示推送进度、成功和失败数量及失败详情。同名歌词会覆盖（按缓存从旧到新上传），推送后保留本地缓存。
 
+在新版 Kikoeta 中点击“同步 Transl 缓存”，导入本地歌词库后还会尝试写回支持该功能的 kikoeru-express。新任务缓存会记录原站点地址，不保存站点账号、令牌或写回密钥；Kikoeta 按已配置的原站点读取当前凭据，并核对作品和音轨路径。旧缓存同步时可手动选择目标站点，也可仅导入本地。来源未配置、音轨无法匹配或写回失败时保留本地导入。该功能需要同时更新 Kikoeta 和 Transl，不改变桌面输出或 LLS 推送方式。
+
 ```text
 音视频 → 转码 → 听写 → [矫正] → [翻译] → LRC / SRT
 字幕   → 解析 ──────→ [矫正] → [翻译] → LRC / SRT
@@ -147,6 +149,6 @@ python -m kt run C:\media\song.srt --disable-thinking
 
 CLI 读取同一份 `engine/data/settings.json`，默认启用矫正和翻译；`--disable-thinking`（别名 `--no-thinking`）在接口支持时关闭两者的思考模式。CLI 使用 `engine/work/cli/`，不经过 HTTP 任务管理器，不提供其暂存恢复、最近任务索引或 Kikoeta 同步流程。
 
-源码验证入口为 `engine/checks/galtransl_integration_check.py` 和 `engine/checks/job_resume_check.py`；具体范围见[功能索引](docs/功能索引.md)。本机设置、工作缓存和检查点可能含模型密钥、远程服务凭据或字幕内容，不要随源码提交。
+本地验证脚本、测试夹具和临时结果不纳入版本控制。源码结构见[功能索引](docs/功能索引.md)。本机设置、工作缓存和检查点可能含模型密钥、远程服务凭据或字幕内容，不要随源码提交。
 
 </details>

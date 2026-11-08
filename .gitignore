@@ -67,6 +67,16 @@ start build.bat
 test/
 tests/
 engine/test_*.py
+checks/
+fixtures/
+integration_test/
+*_test.*
+test_*.py
+*.test.*
+*.spec.*
+*_check.py
+*_check.dart
+*_check.rs
 Thumbs.db
 Desktop.ini
 .DS_Store

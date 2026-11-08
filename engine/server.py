@@ -681,6 +681,7 @@ def _remote_file_name(value: object, source_url: str, index: int) -> str:
 
 
 def _remote_cache_context(payload: dict) -> dict[str, object]:
+    from kt.kikoeta_cache import source_base
     raw = payload.get("cache")
     if not isinstance(raw, dict):
         return {}
@@ -691,6 +692,7 @@ def _remote_cache_context(payload: dict) -> dict[str, object]:
     return {
         "work_id": work_id,
         "track_paths": [str(path).strip() for path in paths],
+        "source_base": source_base(raw.get("source_base")),
     }
 
 

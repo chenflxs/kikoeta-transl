@@ -13,7 +13,7 @@ from typing import Any
 from .cleanup import cleanup_intermediates
 from .events import EventBus
 from .job_checkpoint import load_checkpoints, save_checkpoint
-from .kikoeta_cache import cache_completed_job
+from .kikoeta_cache import cache_completed_job, source_base
 from .llama_runtime import LLAMA_RUNTIME
 from .lls_sync import sync_completed_job
 from .models import AppSettings, FileResult, JobRequest, OutputSettings, StageFlags
@@ -84,6 +84,9 @@ def _resume_key(job: Job) -> str:
     for key in ("theme", "remote_access", "remote_username", "remote_password"):
         settings.pop(key, None)
     raw = [job.source, work_id, paths, asdict(job.flags), settings]
+    origin = source_base(job.cache_context.get("source_base"))
+    if job.source == "kikoeta" and origin:
+        raw.append(origin)
     return hashlib.sha256(json.dumps(raw, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 

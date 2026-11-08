@@ -3,17 +3,18 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
 
 const _presets = [
-  ('target_lrc', '目标 LRC', '单语歌词，kikoeta 优先匹配'),
-  ('target_srt', '目标 SRT', '单语字幕'),
-  ('bilingual_lrc', '双语 LRC', '同一文件内译文 + 原文'),
-  ('bilingual_srt', '双语 SRT', '同一文件内译文 + 原文'),
-  ('source_target_lrc', '原文 + 目标 LRC', '同一文件内原文 + 译文'),
-  ('source_target_srt', '原文 + 目标 SRT', '同一文件内原文 + 译文'),
+  'target_lrc',
+  'target_srt',
+  'bilingual_lrc',
+  'bilingual_srt',
+  'source_target_lrc',
+  'source_target_srt',
 ];
 
 class OutputPage extends StatefulWidget {
@@ -37,7 +38,8 @@ class _OutputPageState extends State<OutputPage> {
   late final VoidCallback _unregisterPageSaver;
   bool _settingsSynced = false;
   bool _pushingCache = false;
-  String _cachePushStatus = '';
+  String Function() _cachePushMessage = () => '';
+  String get _cachePushStatus => _cachePushMessage();
   List<String> _cachePushErrors = [];
 
   @override
@@ -119,7 +121,7 @@ class _OutputPageState extends State<OutputPage> {
 
   String _presetOf(Map output) {
     final raw = '${output['preset'] ?? ''}'.trim();
-    if (_presets.any((item) => item.$1 == raw)) return raw;
+    if (_presets.contains(raw)) return raw;
     final formats = {
       for (final item in (output['formats'] as List? ?? const ['lrc']))
         item.toString(),
@@ -133,10 +135,23 @@ class _OutputPageState extends State<OutputPage> {
   }
 
   String _labelOf(String id) {
-    for (final item in _presets) {
-      if (item.$1 == id) return '${item.$2}  ·  ${item.$3}';
-    }
-    return id;
+    final l10n = context.l10n;
+    final (label, description) = switch (id) {
+      'target_lrc' => (l10n.targetLrc, l10n.targetLrcDescription),
+      'target_srt' => (l10n.targetSrt, l10n.targetSrtDescription),
+      'bilingual_lrc' => (l10n.bilingualLrc, l10n.translationFirstDescription),
+      'bilingual_srt' => (l10n.bilingualSrt, l10n.translationFirstDescription),
+      'source_target_lrc' => (
+        l10n.sourceTargetLrc,
+        l10n.sourceFirstDescription,
+      ),
+      'source_target_srt' => (
+        l10n.sourceTargetSrt,
+        l10n.sourceFirstDescription,
+      ),
+      _ => (id, ''),
+    };
+    return description.isEmpty ? label : '$label  ·  $description';
   }
 
   Future<void> _save({bool auto = false}) async {
@@ -173,7 +188,7 @@ class _OutputPageState extends State<OutputPage> {
     if (!auto && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('输出设置已保存')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.outputSettingsSaved)));
     }
   }
 
@@ -182,7 +197,7 @@ class _OutputPageState extends State<OutputPage> {
     FocusScope.of(context).unfocus();
     setState(() {
       _pushingCache = true;
-      _cachePushStatus = '正在读取歌词缓存…';
+      _cachePushMessage = () => appL10n.readingLyricsCache;
       _cachePushErrors = [];
     });
     var uploaded = 0;
@@ -201,9 +216,12 @@ class _OutputPageState extends State<OutputPage> {
         for (var index = 0; index < files.length; index++) {
           if (!mounted) return;
           final file = files[index] as Map;
+          final current = processed + 1;
           final label = '${entry['work_id']} / ${file['track_path']}';
           setState(
-            () => _cachePushStatus = '正在推送 ${processed + 1}/$total：$label',
+            () =>
+                _cachePushMessage = () =>
+                    appL10n.pushingCacheProgress(current, total, label),
           );
           try {
             await widget.app.engine.pushLlsCachedFile(
@@ -219,14 +237,14 @@ class _OutputPageState extends State<OutputPage> {
       }
       if (!mounted) return;
       setState(() {
-        _cachePushStatus = total == 0
-            ? '暂无可推送的 Kikoeta 歌词缓存'
-            : '推送完成：成功 $uploaded 个，失败 ${errors.length} 个';
+        _cachePushMessage = () => total == 0
+            ? appL10n.noLyricsCacheToPush
+            : appL10n.cachePushCompleted(uploaded, errors.length);
         _cachePushErrors = errors;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _cachePushStatus = '推送未完成：$e');
+      setState(() => _cachePushMessage = () => appL10n.cachePushFailed(e));
     } finally {
       if (mounted) setState(() => _pushingCache = false);
     }
@@ -234,29 +252,29 @@ class _OutputPageState extends State<OutputPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_presets.any((item) => item.$1 == preset)) {
+    if (!_presets.contains(preset)) {
       preset = 'target_lrc';
     }
     final p = paletteOf(context);
     return KtPage(
-      title: '输出',
+      title: context.l10n.output,
       footer: Align(
         alignment: Alignment.centerRight,
         child: FilledButton.icon(
           onPressed: () => _save(),
           icon: const Icon(Icons.save_outlined, size: 18),
-          label: const Text('保存'),
+          label: Text(context.l10n.save),
         ),
       ),
       children: [
         KtSection(
-          title: '文件',
+          title: context.l10n.files,
           icon: Icons.folder_outlined,
           children: [
             KtField(
               controller: directory,
-              label: '输出目录',
-              hint: '留空则输出到源文件所在目录',
+              label: context.l10n.outputDirectory,
+              hint: context.l10n.outputDirectoryHint,
             ),
             Wrap(
               spacing: 8,
@@ -268,24 +286,24 @@ class _OutputPageState extends State<OutputPage> {
                     if (dir != null) setState(() => directory.text = dir);
                   },
                   icon: const Icon(Icons.folder_open_outlined, size: 18),
-                  label: const Text('选择目录'),
+                  label: Text(context.l10n.chooseDirectory),
                 ),
                 TextButton(
                   onPressed: () => setState(() => directory.text = ''),
-                  child: const Text('使用源文件目录'),
+                  child: Text(context.l10n.useSourceDirectory),
                 ),
               ],
             ),
           ],
         ),
         KtSection(
-          title: '格式',
+          title: context.l10n.format,
           icon: Icons.subtitles_outlined,
           children: [
             KtSelectField<String>(
-              label: '输出格式',
+              label: context.l10n.outputFormat,
               value: preset,
-              values: [for (final item in _presets) item.$1],
+              values: _presets,
               labelOf: _labelOf,
               onChanged: (value) => setState(() => preset = value),
             ),
@@ -297,8 +315,8 @@ class _OutputPageState extends State<OutputPage> {
           children: [
             KtSwitchRow(
               icon: Icons.cloud_upload_outlined,
-              title: '来自 Kikoeta 的翻译请求，产物同步上传到 Kikoeta-LLS',
-              sub: '任务成功完成后上传歌词；本地任务不受影响',
+              title: context.l10n.llsSyncTitle,
+              sub: context.l10n.llsSyncDescription,
               value: llsSync,
               onChanged: (value) => setState(() => llsSync = value),
               showDivider: false,
@@ -313,28 +331,33 @@ class _OutputPageState extends State<OutputPage> {
                   children: [
                     KtField(
                       controller: llsUrl,
-                      label: 'Kikoeta-LLS 地址（HTTP/HTTPS）',
-                      hint: '留空使用本机 http://127.0.0.1:2378',
+                      label: context.l10n.llsUrl,
+                      hint: context.l10n.llsUrlHint,
                     ),
                     KtSelectField<String>(
-                      label: '上传验证方式',
+                      label: context.l10n.uploadAuthentication,
                       value: llsAuthMode,
                       values: const ['key', 'basic'],
-                      labelOf: (value) => value == 'key' ? '12 位密钥' : '独立账号和密码',
+                      labelOf: (value) => value == 'key'
+                          ? context.l10n.twelveCharacterKey
+                          : context.l10n.separateCredentials,
                       onChanged: (value) => setState(() => llsAuthMode = value),
                     ),
                     if (llsAuthMode == 'key')
                       KtField(
                         controller: llsKey,
-                        label: '上传密钥',
-                        hint: '在 Kikoeta-LLS 设置页生成或手动设置 12 位密钥',
+                        label: context.l10n.uploadKey,
+                        hint: context.l10n.uploadKeyHint,
                         obscure: true,
                       )
                     else ...[
-                      KtField(controller: llsUsername, label: '上传账号'),
+                      KtField(
+                        controller: llsUsername,
+                        label: context.l10n.uploadUsername,
+                      ),
                       KtField(
                         controller: llsPassword,
-                        label: '上传密码',
+                        label: context.l10n.uploadPassword,
                         obscure: true,
                       ),
                     ],
@@ -345,20 +368,22 @@ class _OutputPageState extends State<OutputPage> {
           ],
         ),
         KtSection(
-          title: '歌词缓存',
+          title: context.l10n.lyricsCache,
           icon: Icons.cached_outlined,
           children: [
             Text(
-              '将最近 5 次 Kikoeta 任务中保留的 LRC 缓存推送到 LLS。'
-              '使用上方地址和验证配置，无需开启自动同步。'
-              '同名歌词会覆盖，推送后保留本地缓存。',
+              context.l10n.lyricsCacheDescription,
               style: TextStyle(fontSize: 12, color: p.muted, height: 1.4),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _pushingCache ? null : _pushCache,
               icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-              label: Text(_pushingCache ? '正在推送…' : '将缓存推送到 LLS'),
+              label: Text(
+                _pushingCache
+                    ? context.l10n.pushingCache
+                    : context.l10n.pushCacheToLls,
+              ),
             ),
             if (_pushingCache) ...[
               const SizedBox(height: 10),
@@ -380,7 +405,7 @@ class _OutputPageState extends State<OutputPage> {
                 child: ExpansionTile(
                   tilePadding: EdgeInsets.zero,
                   title: Text(
-                    '查看失败详情',
+                    context.l10n.viewFailureDetails,
                     style: TextStyle(
                       fontSize: 13,
                       color: p.text,

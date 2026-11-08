@@ -237,6 +237,7 @@ class AppSettings:
     llama_model: str = ""
     proxy: str = ""
     theme: str = "system"
+    ui_language: str = "system"
     remote_access: bool = False
     remote_username: str = "admin"
     remote_password: str = "kikoeta"
@@ -244,6 +245,8 @@ class AppSettings:
     target_lang: str = "zh-cn"
     flags: StageFlags = field(default_factory=StageFlags)
     asr: AsrSettings = field(default_factory=AsrSettings)
+    asr_preset: str = "qwen3"
+    asr_presets: dict[str, dict[str, Any]] = field(default_factory=dict)
     correct: CorrectionSettings = field(default_factory=CorrectionSettings)
     translate: TranslateSettings = field(default_factory=TranslateSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
@@ -274,6 +277,11 @@ class AppSettings:
             llama_model=str(raw.get("llama_model") or ""),
             proxy=str(raw["proxy"] if "proxy" in raw else "http://127.0.0.1:7890"),
             theme=str(raw.get("theme") or "system"),
+            ui_language=(
+                str(raw.get("ui_language"))
+                if raw.get("ui_language") in ("system", "zh-CN", "zh-TW", "en", "ja", "ru")
+                else "system"
+            ),
             remote_access=_as_bool(raw.get("remote_access"), False),
             remote_username=_remote_username(raw.get("remote_username")),
             remote_password=str(raw.get("remote_password") or "kikoeta"),
@@ -284,6 +292,16 @@ class AppSettings:
                 enable_translate=bool(flags.get("enable_translate", True)),
             ),
             asr=_asr_from_dict(asr, str(raw.get("source_lang") or "ja")),
+            asr_preset=str(raw.get("asr_preset") or "qwen3"),
+            asr_presets=(
+                {
+                    str(name): dict(values)
+                    for name, values in raw["asr_presets"].items()
+                    if isinstance(values, dict)
+                }
+                if isinstance(raw.get("asr_presets"), dict)
+                else {}
+            ),
             correct=CorrectionSettings(
                 provider=_normalize_provider(correct.get("provider")),
                 base_url=str(correct.get("base_url") or ""),

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
 import '../widgets.dart';
 
@@ -19,14 +20,14 @@ class DictPage extends StatelessWidget {
     ];
   }
 
-  String _title(String category) {
+  String _title(BuildContext context, String category) {
     switch (category) {
       case 'gpt':
-        return 'GPT 字典';
+        return context.l10n.gptDictionary;
       case 'post':
-        return '译后';
+        return context.l10n.postTranslation;
       default:
-        return '译前';
+        return context.l10n.preTranslation;
     }
   }
 
@@ -42,9 +43,9 @@ class DictPage extends StatelessWidget {
       content = await file.readAsString(encoding: utf8);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('无法读取字典：$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(appL10n.dictionaryReadFailed(e))),
+        );
       }
       return;
     }
@@ -68,13 +69,13 @@ class DictPage extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('字典已保存')));
+          ).showSnackBar(SnackBar(content: Text(appL10n.dictionarySaved)));
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('字典已保存，但刷新失败：$e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(appL10n.dictionaryRefreshFailed(e))),
+          );
         }
       }
     }
@@ -103,8 +104,8 @@ class DictPage extends StatelessWidget {
           ],
         };
         return KtPage(
-          title: '字典',
-          description: '直接使用 GalTransl 内置 Dict。点击条目会在 kikoeta-transl 内置编辑器中打开。',
+          title: context.l10n.dictionaries,
+          description: context.l10n.dictionaryDescription,
           actions: [
             TextButton.icon(
               onPressed: () async {
@@ -112,19 +113,23 @@ class DictPage extends StatelessWidget {
                   await app.refreshTools();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('已刷新，发现 ${_dicts().length} 个字典')),
+                      SnackBar(
+                        content: Text(
+                          context.l10n.dictionariesFound(_dicts().length),
+                        ),
+                      ),
                     );
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('刷新失败：$e')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(context.l10n.refreshFailed(e))),
+                    );
                   }
                 }
               },
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('刷新字典'),
+              label: Text(context.l10n.refreshDictionaries),
             ),
           ],
           children: [
@@ -135,7 +140,7 @@ class DictPage extends StatelessWidget {
                 children: [
                   KtRow(
                     icon: Icons.menu_book_outlined,
-                    title: '未找到字典文件',
+                    title: context.l10n.noDictionaries,
                     sub: dictDir,
                     showDivider: false,
                   ),
@@ -144,14 +149,16 @@ class DictPage extends StatelessWidget {
             for (final category in ['pre', 'gpt', 'post'])
               if ((groups[category] ?? const []).isNotEmpty)
                 KtSection(
-                  title: _title(category),
+                  title: _title(context, category),
                   icon: Icons.menu_book_outlined,
                   children: [
                     for (var i = 0; i < groups[category]!.length; i++)
                       KtRow(
                         icon: Icons.menu_book_outlined,
                         title: '${groups[category]![i]['name'] ?? ''}',
-                        sub: '${groups[category]![i]['count'] ?? 0} 条 · 点击编辑',
+                        sub: context.l10n.dictionaryEntryCount(
+                          groups[category]![i]['count'] ?? 0,
+                        ),
                         trailing: Icon(
                           Icons.edit_outlined,
                           size: 18,
@@ -289,7 +296,7 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
               if (error != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  '保存失败：$error',
+                  context.l10n.saveFailed(error!),
                   style: TextStyle(color: p.red, fontSize: 12),
                 ),
               ],
@@ -305,7 +312,7 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
                       onPressed: saving
                           ? null
                           : () => Navigator.of(context).pop(false),
-                      child: const Text('取消'),
+                      child: Text(context.l10n.cancel),
                     ),
                     FilledButton.icon(
                       onPressed: saving ? null : _save,
@@ -316,7 +323,9 @@ class _DictionaryEditorDialogState extends State<_DictionaryEditorDialog> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.save_outlined, size: 17),
-                      label: Text(saving ? '保存中…' : '保存'),
+                      label: Text(
+                        saving ? context.l10n.saving : context.l10n.save,
+                      ),
                     ),
                   ],
                 ),

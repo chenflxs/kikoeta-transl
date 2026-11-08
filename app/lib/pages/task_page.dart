@@ -4,6 +4,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
 import '../widgets.dart';
 
@@ -69,7 +70,7 @@ class _TaskPageState extends State<TaskPage> {
         '${twoDigits(now.hour)}${twoDigits(now.minute)}${twoDigits(now.second)}.txt';
     try {
       final path = await FilePicker.platform.saveFile(
-        dialogTitle: '导出日志',
+        dialogTitle: appL10n.exportLogs,
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: ['txt'],
@@ -79,26 +80,16 @@ class _TaskPageState extends State<TaskPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('日志已导出')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.logsExported)));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('日志导出失败：$error')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.logExportFailed(error))));
     }
   }
 
-  String _statusLabel(String status) => switch (status) {
-    'queued' => '待处理',
-    'running' => '处理中',
-    'pausing' => '正在暂存',
-    'paused' => '已暂存',
-    'cancelling' => '正在取消',
-    'completed' || 'done' => '已完成',
-    'failed' => '失败',
-    'cancelled' => '已取消',
-    _ => status,
-  };
+  String _statusLabel(String status) => context.l10n.jobStatusLabel(status);
 
   ButtonStyle get _textActionStyle => TextButton.styleFrom(
     foregroundColor: paletteOf(context).muted,
@@ -141,20 +132,23 @@ class _TaskPageState extends State<TaskPage> {
   Widget _stageCard(AppState app) {
     final p = paletteOf(context);
     return KtSection(
-      title: '处理阶段',
+      title: context.l10n.processingStages,
       icon: Icons.tune_outlined,
       children: [
         _stageRow(
           icon: Icons.graphic_eq,
-          title: '转码 + ASR',
-          subtitle: '音频 / 视频必做；字幕输入自动跳过',
-          trailing: Text('固定', style: TextStyle(fontSize: 12, color: p.dim)),
+          title: context.l10n.transcodeAndAsr,
+          subtitle: context.l10n.transcodeDescription,
+          trailing: Text(
+            context.l10n.fixed,
+            style: TextStyle(fontSize: 12, color: p.dim),
+          ),
         ),
         Divider(height: 1, color: p.line),
         _stageRow(
           icon: Icons.auto_fix_high,
-          title: '矫正',
-          subtitle: '只修听写，不翻译',
+          title: context.l10n.correction,
+          subtitle: context.l10n.correctionStageDescription,
           onTap: () => app.setStageFlag('correct', !app.enableCorrect),
           trailing: Switch(
             value: app.enableCorrect,
@@ -165,8 +159,8 @@ class _TaskPageState extends State<TaskPage> {
         Divider(height: 1, color: p.line),
         _stageRow(
           icon: Icons.translate,
-          title: '翻译',
-          subtitle: '使用已配置的翻译器',
+          title: context.l10n.translation,
+          subtitle: context.l10n.translationStageDescription,
           onTap: () => app.setStageFlag('translate', !app.enableTranslate),
           trailing: Switch(
             value: app.enableTranslate,
@@ -189,12 +183,12 @@ class _TaskPageState extends State<TaskPage> {
     final p = paletteOf(context);
     final stopping = app.jobStatus == 'cancelling';
     return KtSection(
-      title: '输入文件',
+      title: context.l10n.inputFiles,
       icon: Icons.library_music_outlined,
       action: TextButton.icon(
         onPressed: app.files.isEmpty ? null : app.clearFiles,
         icon: const Icon(Icons.playlist_remove_outlined, size: 18),
-        label: const Text('清空列表'),
+        label: Text(context.l10n.clearFileList),
         style: _textActionStyle,
       ),
       children: [
@@ -220,8 +214,8 @@ class _TaskPageState extends State<TaskPage> {
                     const SizedBox(height: 6),
                     Text(
                       app.files.isEmpty
-                          ? '拖入音视频或字幕，或点击选择'
-                          : '已选择 ${app.files.length} 个文件，点击继续添加',
+                          ? context.l10n.dropFilesHint
+                          : context.l10n.selectedFiles(app.files.length),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: p.muted, fontSize: 13),
                     ),
@@ -264,7 +258,7 @@ class _TaskPageState extends State<TaskPage> {
                     style: TextStyle(color: p.dim, fontSize: 11),
                   ),
                   trailing: IconButton(
-                    tooltip: '移除文件',
+                    tooltip: context.l10n.removeFile,
                     onPressed: () => app.removeFile(file),
                     icon: Icon(Icons.close, size: 16, color: p.dim),
                   ),
@@ -306,10 +300,12 @@ class _TaskPageState extends State<TaskPage> {
             ),
             label: Text(
               app.submittingJob
-                  ? '正在提交…'
+                  ? context.l10n.submitting
                   : app.hasActiveJob
-                  ? (stopping ? '正在停止…' : '停止工作流')
-                  : '开始处理',
+                  ? (stopping
+                        ? context.l10n.stopping
+                        : context.l10n.stopWorkflow)
+                  : context.l10n.startProcessing,
             ),
           ),
         ),
@@ -327,7 +323,7 @@ class _TaskPageState extends State<TaskPage> {
       _ => p.muted,
     };
     return KtSection(
-      title: '当前工作流',
+      title: context.l10n.currentWorkflow,
       icon: Icons.timeline,
       action: app.jobStatus.isEmpty
           ? null
@@ -358,7 +354,9 @@ class _TaskPageState extends State<TaskPage> {
         if (app.jobId != null) ...[
           const SizedBox(height: 4),
           Text(
-            app.jobSource == 'kikoeta' ? '来自 Kikoeta' : '本地任务',
+            app.jobSource == 'kikoeta'
+                ? context.l10n.fromKikoeta
+                : context.l10n.localTask,
             style: TextStyle(color: p.muted, fontSize: 12),
           ),
           const SizedBox(height: 4),
@@ -374,12 +372,12 @@ class _TaskPageState extends State<TaskPage> {
   Widget _logCard(AppState app) {
     final p = paletteOf(context);
     return KtSection(
-      title: '日志',
+      title: context.l10n.logs,
       icon: Icons.terminal,
       action: TextButton.icon(
         onPressed: app.logs.isEmpty ? null : () => _exportLogs(app),
         icon: const Icon(Icons.download_outlined, size: 16),
-        label: const Text('导出日志'),
+        label: Text(context.l10n.exportLogs),
         style: _textActionStyle,
       ),
       children: [
@@ -394,7 +392,7 @@ class _TaskPageState extends State<TaskPage> {
           ),
           child: app.logs.isEmpty
               ? Text(
-                  '尚无日志',
+                  context.l10n.noLogs,
                   style: TextStyle(color: p.dim, fontSize: 12, height: 1.65),
                 )
               : ListView.builder(
@@ -419,7 +417,7 @@ class _TaskPageState extends State<TaskPage> {
       builder: (context, _) {
         _scheduleLogScroll(app);
         return KtPage(
-          title: '任务',
+          title: context.l10n.tasks,
           secondaryChildren: [_workflowCard(app), _logCard(app)],
           children: [_stageCard(app), _inputCard(app)],
         );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'l10n/strings.dart';
 import 'theme.dart';
 
 Palette paletteOf(BuildContext context) =>
@@ -534,10 +535,14 @@ class _KtComboFieldState extends State<KtComboField> {
               ktInputDecoration(
                 context,
                 widget.label,
-                hint: widget.hint ?? (hasOptions ? '输入或从列表选择' : null),
+                hint:
+                    widget.hint ??
+                    (hasOptions ? context.l10n.comboInputHint : null),
               ).copyWith(
                 suffixIcon: IconButton(
-                  tooltip: hasOptions ? '打开列表' : '暂无预置选项，可直接输入',
+                  tooltip: hasOptions
+                      ? context.l10n.openList
+                      : context.l10n.noPresetOptions,
                   iconSize: 21,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(

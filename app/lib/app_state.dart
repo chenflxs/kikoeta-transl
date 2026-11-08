@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'l10n/strings.dart';
 import 'services/engine.dart';
+import 'l10n/app_language.dart';
 
 class AppState extends ChangeNotifier {
   AppState({EngineClient? engine}) : engine = engine ?? EngineClient();
@@ -10,6 +12,9 @@ class AppState extends ChangeNotifier {
   final EngineClient engine;
   final ValueNotifier<int> tabNotifier = ValueNotifier(0);
   final ValueNotifier<String> themeNotifier = ValueNotifier('system');
+  final ValueNotifier<String> languageNotifier = ValueNotifier(
+    AppLanguage.system,
+  );
   final Map<int, Future<void> Function()> _pageSavers = {};
   Future<void> _settingsWrite = Future<void>.value();
   int _settingsRevision = 0;
@@ -17,7 +22,8 @@ class AppState extends ChangeNotifier {
 
   int tab = 0;
   bool engineOnline = false;
-  String engineMessage = '正在连接 engine…';
+  String Function() _engineMessage = () => appL10n.engineConnecting;
+  String get engineMessage => _engineMessage();
   Map<String, dynamic> settings = {};
   Map<String, dynamic> tools = {};
   final List<String> files = [];
@@ -52,9 +58,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     engineOnline = await engine.ensureStarted();
-    engineMessage = engineOnline
-        ? 'engine 已连接'
-        : '${engine.startupError ?? '未能启动 engine'}，请手动运行 python engine/server.py';
+    _engineMessage = () => engineOnline
+        ? appL10n.engineConnected
+        : appL10n.engineStartHelp(
+            engine.startupError ?? appL10n.engineStartFailed,
+          );
     if (engineOnline) {
       await reload();
       _startRemoteJobDiscovery();
@@ -67,11 +75,12 @@ class AppState extends ChangeNotifier {
     final loadedSettings = await engine.settings();
     if (revision == _settingsRevision) settings = loadedSettings;
     themeNotifier.value = _themeValue(settings['theme']);
+    _syncLanguage();
     try {
       tools = await engine.tools();
     } catch (e) {
       tools = {};
-      engineMessage = '工具检测失败：$e';
+      _engineMessage = () => appL10n.toolDetectionFailed(e);
     }
     final flags = (settings['flags'] as Map?) ?? {};
     enableCorrect = flags['enable_correct'] != false;
@@ -150,6 +159,7 @@ class AppState extends ChangeNotifier {
       settings = await engine.saveSettings(next);
       _settingsRevision++;
       themeNotifier.value = _themeValue(settings['theme']);
+      _syncLanguage();
       notifyListeners();
     });
     _settingsWrite = pending;
@@ -159,6 +169,20 @@ class AppState extends ChangeNotifier {
   void previewTheme(String value) {
     themeNotifier.value = _themeValue(value);
   }
+
+  void _syncLanguage() {
+    AppLanguage.setPreference(
+      settings['ui_language']?.toString() ?? AppLanguage.system,
+    );
+    languageNotifier.value = AppLanguage.preference;
+  }
+
+  Future<void> setUiLanguage(String value) => updateSettings(
+    (next) =>
+        next['ui_language'] = AppLanguage.selectablePreferences.contains(value)
+        ? value
+        : AppLanguage.system,
+  );
 
   String _themeValue(Object? value) {
     final theme = value?.toString();
@@ -175,9 +199,9 @@ class AppState extends ChangeNotifier {
       await reload();
       _startRemoteJobDiscovery();
     }
-    engineMessage = engineOnline
-        ? 'engine 已连接'
-        : engine.startupError ?? '未能启动 engine';
+    _engineMessage = () => engineOnline
+        ? appL10n.engineConnected
+        : engine.startupError ?? appL10n.engineStartFailed;
     notifyListeners();
   }
 
@@ -203,7 +227,7 @@ class AppState extends ChangeNotifier {
   Future<void> startJob() async {
     if (hasActiveJob) return;
     if (files.isEmpty) {
-      engineMessage = '请先添加文件';
+      _engineMessage = () => appL10n.addFilesFirst;
       notifyListeners();
       return;
     }
@@ -220,10 +244,10 @@ class AppState extends ChangeNotifier {
       jobId = created['job_id'] as String?;
       jobStatus = created['status'] as String? ?? 'running';
       jobSource = created['source']?.toString() ?? 'desktop';
-      engineMessage = '任务已开始';
+      _engineMessage = () => appL10n.jobStarted;
       _restartPolling();
     } catch (error) {
-      engineMessage = '提交任务失败：$error';
+      _engineMessage = () => appL10n.jobSubmitError(error);
     } finally {
       _submittingJob = false;
       notifyListeners();
@@ -235,8 +259,8 @@ class AppState extends ChangeNotifier {
     if (id == null || !hasActiveJob) return;
     await engine.cancel(id);
     jobStatus = 'cancelling';
-    engineMessage = '正在停止任务…';
-    _appendLog('已请求停止任务，正在等待当前阶段结束');
+    _engineMessage = () => appL10n.jobStopping;
+    _appendLog(appL10n.jobStopRequested);
     notifyListeners();
   }
 
@@ -265,15 +289,17 @@ class AppState extends ChangeNotifier {
         final job = await engine.job(id);
         if (revision != _pollRevision) return;
         jobStatus = job['status']?.toString() ?? 'done';
-        engineMessage = jobStatus == 'paused' ? '任务已暂存' : '任务结束：$jobStatus';
+        _engineMessage = () => jobStatus == 'paused'
+            ? appL10n.jobPausedMessage
+            : appL10n.jobEnded(appL10n.jobStatusLabel(jobStatus));
       }
       if (changed) notifyListeners();
     } catch (e) {
       if (revision != _pollRevision) return;
       if (e is TimeoutException) {
-        _appendLog('等待 engine 事件超时，将继续轮询');
+        _appendLog(appL10n.eventTimeoutRetry);
       } else {
-        _appendLog('轮询失败: $e');
+        _appendLog(appL10n.pollFailed(e));
       }
       notifyListeners();
     } finally {
@@ -326,7 +352,7 @@ class AppState extends ChangeNotifier {
         final restart = _poll?.isActive != true;
         jobStatus = status;
         if (restart) {
-          engineMessage = '任务继续处理中';
+          _engineMessage = () => appL10n.jobResumed;
           _restartPolling();
         }
         if (changed || restart) notifyListeners();
@@ -339,7 +365,7 @@ class AppState extends ChangeNotifier {
       jobId = id;
       jobStatus = job['status']?.toString() ?? 'queued';
       jobSource = 'kikoeta';
-      engineMessage = '正在显示由 kikoeta 发起的任务日志';
+      _engineMessage = () => appL10n.showingKikoetaLogs;
       _restartPolling();
       notifyListeners();
     } catch (_) {
@@ -367,6 +393,7 @@ class AppState extends ChangeNotifier {
     unawaited(engine.shutdown());
     tabNotifier.dispose();
     themeNotifier.dispose();
+    languageNotifier.dispose();
     super.dispose();
   }
 }

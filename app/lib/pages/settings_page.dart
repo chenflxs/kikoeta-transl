@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
+import '../l10n/app_language.dart';
 import '../services/theme_reveal.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
@@ -132,6 +134,18 @@ class _SettingsPageState extends State<SettingsPage> {
     await widget.app.updateSettings((next) => next['theme'] = value);
   }
 
+  Future<void> _changeLanguage(String value) async {
+    try {
+      await widget.app.setUiLanguage(value);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(appL10n.saveFailed(error))));
+    }
+  }
+
   Future<void> _save({bool auto = false}) async {
     final running = _saving;
     if (running != null) {
@@ -152,7 +166,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final draft = _draft();
     if (auto && draft == _savedDraft) return;
     if (!_validRemoteCredentials(showMessage: !auto)) {
-      if (auto) throw StateError('远程用户名或密码无效');
+      if (auto) throw StateError(appL10n.invalidRemoteCredentials);
       return;
     }
     final previousRemoteAccess = widget.app.settings['remote_access'] == true;
@@ -160,14 +174,16 @@ class _SettingsPageState extends State<SettingsPage> {
     await widget.app.reload();
     if (previousRemoteAccess != remoteAccess) {
       await widget.app.restartEngine();
-      if (!widget.app.engineOnline) throw StateError('远程服务重启失败');
+      if (!widget.app.engineOnline) {
+        throw StateError(appL10n.remoteRestartFailed);
+      }
     }
     _savedDraft = draft;
     if (!auto && mounted) {
       setState(() {});
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('设置已保存')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.settingsSaved)));
     }
   }
 
@@ -175,9 +191,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final username = remoteUsername.text.trim();
     if (username.isEmpty || remotePassword.text.isEmpty) {
       if (showMessage) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('远程用户名和密码不能为空')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(appL10n.remoteCredentialsRequired)),
+        );
       }
       return false;
     }
@@ -185,7 +201,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (showMessage) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('远程用户名不能包含冒号')));
+        ).showSnackBar(SnackBar(content: Text(appL10n.remoteUsernameColon)));
       }
       return false;
     }
@@ -203,7 +219,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {});
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('远程账密已重置为 admin / kikoeta')));
+    ).showSnackBar(SnackBar(content: Text(appL10n.remoteCredentialsReset)));
   }
 
   Future<void> _refreshTools() async {
@@ -214,7 +230,7 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {});
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('已刷新工具检测')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.toolsRefreshed)));
     }
   }
 
@@ -252,7 +268,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final tag = (release['tag_name'] as String?)?.trim();
       final url = (release['html_url'] as String?)?.trim();
       if (tag == null || tag.isEmpty) {
-        throw const FormatException('GitHub Release 未提供版本号');
+        throw FormatException(appL10n.releaseMissingVersion);
       }
       return (
         tag: tag,
@@ -261,7 +277,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     if (apiResponse.statusCode != 403) {
-      throw HttpException('GitHub 返回 ${apiResponse.statusCode}');
+      throw HttpException(appL10n.githubStatus(apiResponse.statusCode));
     }
 
     // The unauthenticated REST API is rate limited. The public Atom feed is
@@ -273,15 +289,13 @@ class _SettingsPageState extends State<SettingsPage> {
         )
         .timeout(const Duration(seconds: 15));
     if (feedResponse.statusCode != 200) {
-      throw HttpException(
-        'GitHub API 返回 403，Release Feed 返回 ${feedResponse.statusCode}',
-      );
+      throw HttpException(appL10n.releaseFeedStatus(feedResponse.statusCode));
     }
     final entry = RegExp(
       r'<entry\b[^>]*>([\s\S]*?)</entry>',
       caseSensitive: false,
     ).firstMatch(feedResponse.body)?.group(1);
-    if (entry == null) throw const FormatException('Release Feed 中没有发布版本');
+    if (entry == null) throw FormatException(appL10n.releaseFeedEmpty);
     final rawTag = RegExp(
       r'<title\b[^>]*>([\s\S]*?)</title>',
       caseSensitive: false,
@@ -292,7 +306,7 @@ class _SettingsPageState extends State<SettingsPage> {
       caseSensitive: false,
     ).firstMatch(entry)?.group(1);
     if (tag == null || tag.isEmpty) {
-      throw const FormatException('Release Feed 未提供版本号');
+      throw FormatException(appL10n.releaseFeedMissingVersion);
     }
     return (
       tag: _decodeXml(tag),
@@ -324,20 +338,20 @@ class _SettingsPageState extends State<SettingsPage> {
       for (var i = 0; i < 3; i++) {
         final current = i < currentParts.length ? currentParts[i] : 0;
         final newer = i < latestParts.length ? latestParts[i] : null;
-        if (newer == null) throw const FormatException('版本号格式无效');
+        if (newer == null) throw FormatException(appL10n.invalidVersion);
         if (newer != current) {
           comparison = newer.compareTo(current);
           break;
         }
       }
       if (comparison > 0) {
-        message = '发现新版本 $tag（当前 $currentVersion）';
+        message = appL10n.updateAvailable(tag, currentVersion);
         await _openUrl(url);
       } else {
-        message = '当前已是最新版本（$currentVersion）';
+        message = appL10n.alreadyLatest(currentVersion);
       }
     } catch (error) {
-      message = '检查更新失败：$error';
+      message = appL10n.updateCheckFailed(error);
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);
     }
@@ -353,7 +367,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final tools = widget.app.tools;
     final p = paletteOf(context);
     return KtPage(
-      title: '设置',
+      title: context.l10n.settings,
       footer: Align(
         alignment: Alignment.centerRight,
         child: SizedBox(
@@ -361,23 +375,23 @@ class _SettingsPageState extends State<SettingsPage> {
           child: FilledButton.icon(
             onPressed: () => _save(),
             icon: const Icon(Icons.save_outlined, size: 18),
-            label: const Text('保存'),
+            label: Text(context.l10n.save),
           ),
         ),
       ),
       children: [
         KtSection(
-          title: '工具',
+          title: context.l10n.tools,
           icon: Icons.handyman_outlined,
           children: [
             KtRow(
               icon: Icons.movie_outlined,
               title: 'ffmpeg',
               sub:
-                  '${(tools['ffmpeg'] as String?)?.isNotEmpty == true ? tools['ffmpeg'] : (tools['ffmpeg_error'] ?? '未检测')}',
+                  '${(tools['ffmpeg'] as String?)?.isNotEmpty == true ? tools['ffmpeg'] : (tools['ffmpeg_error'] ?? context.l10n.notDetected)}',
               trailing: TextButton(
                 onPressed: _refreshTools,
-                child: const Text('刷新'),
+                child: Text(context.l10n.refresh),
               ),
               showDivider: true,
             ),
@@ -389,24 +403,28 @@ class _SettingsPageState extends State<SettingsPage> {
                           ?.isNotEmpty ==
                       true
                   ? (tools['asr'] as Map)['executable'].toString()
-                  : ((tools['asr'] as Map?)?['dir']?.toString() ?? '未找到可执行文件'),
+                  : ((tools['asr'] as Map?)?['dir']?.toString() ??
+                        context.l10n.executableNotFound),
               trailing: TextButton(
                 onPressed: _refreshTools,
-                child: const Text('刷新'),
+                child: Text(context.l10n.refresh),
               ),
               showDivider: false,
             ),
           ],
         ),
         KtSection(
-          title: '路径',
+          title: context.l10n.paths,
           icon: Icons.folder_open_outlined,
           children: [
-            KtField(controller: ffmpeg, label: 'ffmpeg 路径'),
-            KtField(controller: crispasr, label: 'CrispASR 目录'),
+            KtField(controller: ffmpeg, label: context.l10n.ffmpegPath),
+            KtField(
+              controller: crispasr,
+              label: context.l10n.crispAsrDirectory,
+            ),
             KtField(
               controller: proxy,
-              label: 'HTTP 代理',
+              label: context.l10n.httpProxy,
               hint: 'http://127.0.0.1:7890',
             ),
             Padding(
@@ -418,16 +436,30 @@ class _SettingsPageState extends State<SettingsPage> {
                     final dir = await FilePicker.platform.getDirectoryPath();
                     if (dir != null) setState(() => crispasr.text = dir);
                   },
-                  child: const Text('选择 CrispASR 目录'),
+                  child: Text(context.l10n.chooseCrispAsrDirectory),
                 ),
               ),
             ),
           ],
         ),
         KtSection(
-          title: '界面与服务',
+          title: context.l10n.interfaceAndService,
           icon: Icons.palette_outlined,
           children: [
+            KtSelectField<String>(
+              label: context.l10n.uiLanguage,
+              value: widget.app.languageNotifier.value,
+              values: AppLanguage.selectablePreferences,
+              labelOf: (value) => switch (value) {
+                AppLanguage.simplifiedChinese => '简体中文',
+                AppLanguage.traditionalChinese => '繁體中文',
+                AppLanguage.english => 'English (beta)',
+                AppLanguage.japanese => '日本語 (beta)',
+                AppLanguage.russian => 'Русский (beta)',
+                _ => context.l10n.followSystem,
+              },
+              onChanged: _changeLanguage,
+            ),
             KtRow(
               // 图标随当前主题模式变化，和 kikoeta 的设置页一致
               icon: switch (themeMode) {
@@ -435,59 +467,74 @@ class _SettingsPageState extends State<SettingsPage> {
                 'dark' => Icons.dark_mode_outlined,
                 _ => Icons.brightness_auto_outlined,
               },
-              title: '主题',
-              // 三段按钮按内容自适应宽度，不撑满整行
-              trailing: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'system', label: Text('跟随系统')),
-                  ButtonSegment(value: 'light', label: Text('浅色')),
-                  ButtonSegment(value: 'dark', label: Text('深色')),
-                ],
-                selected: {themeMode},
-                showSelectedIcon: false,
-                style: ButtonStyle(
-                  backgroundColor: WidgetStateProperty.resolveWith(
-                    (states) => states.contains(WidgetState.selected)
-                        ? p.accent.withValues(alpha: .12)
-                        : p.surface2,
-                  ),
-                  foregroundColor: WidgetStateProperty.resolveWith(
-                    (states) => states.contains(WidgetState.selected)
-                        ? p.accent
-                        : p.muted,
-                  ),
-                  // 选中段加一圈同色细边：浅色调下 12% 底色对比很弱，
-                  // 只靠底色不容易一眼看出当前选的是哪一段
-                  side: WidgetStateProperty.resolveWith(
-                    (states) => BorderSide(
-                      color: states.contains(WidgetState.selected)
-                          ? p.accent.withValues(alpha: .6)
-                          : p.line,
-                      width: 1,
+              title: context.l10n.theme,
+              // Constrain translated labels within the existing settings row.
+              trailing: Flexible(
+                flex: 4,
+                child: SegmentedButton<String>(
+                  expandedInsets: EdgeInsets.zero,
+                  segments: [
+                    ButtonSegment(
+                      value: 'system',
+                      label: Text(context.l10n.followSystem),
                     ),
-                  ),
-                  // 视觉高度收窄到与设置页其它内联控件齐平
-                  minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
-                  textStyle: const WidgetStatePropertyAll(
-                    TextStyle(
-                      fontFamily: 'SarasaUI',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    ButtonSegment(
+                      value: 'light',
+                      label: Text(context.l10n.lightTheme),
                     ),
+                    ButtonSegment(
+                      value: 'dark',
+                      label: Text(context.l10n.darkTheme),
+                    ),
+                  ],
+                  selected: {themeMode},
+                  showSelectedIcon: false,
+                  style: ButtonStyle(
+                    backgroundColor: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.selected)
+                          ? p.accent.withValues(alpha: .12)
+                          : p.surface2,
+                    ),
+                    foregroundColor: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.selected)
+                          ? p.accent
+                          : p.muted,
+                    ),
+                    // 选中段加一圈同色细边：浅色调下 12% 底色对比很弱，
+                    // 只靠底色不容易一眼看出当前选的是哪一段
+                    side: WidgetStateProperty.resolveWith(
+                      (states) => BorderSide(
+                        color: states.contains(WidgetState.selected)
+                            ? p.accent.withValues(alpha: .6)
+                            : p.line,
+                        width: 1,
+                      ),
+                    ),
+                    // 视觉高度收窄到与设置页其它内联控件齐平
+                    minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+                    textStyle: const WidgetStatePropertyAll(
+                      TextStyle(
+                        fontFamily: 'SarasaUI',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    visualDensity: VisualDensity.compact,
                   ),
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 10),
-                  ),
-                  visualDensity: VisualDensity.compact,
+                  onSelectionChanged: (selection) =>
+                      _changeTheme(selection.first),
                 ),
-                onSelectionChanged: (selection) =>
-                    _changeTheme(selection.first),
               ),
             ),
             KtSwitchRow(
               icon: Icons.lan_outlined,
-              title: '允许远程访问',
-              sub: remoteAccess ? '服务监听 0.0.0.0:2370' : '服务仅监听 127.0.0.1:2370',
+              title: context.l10n.allowRemoteAccess,
+              sub: remoteAccess
+                  ? context.l10n.remoteListenAll
+                  : context.l10n.remoteListenLocal,
               value: remoteAccess,
               onChanged: (value) => setState(() => remoteAccess = value),
               showDivider: false,
@@ -495,25 +542,29 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
         KtSection(
-          title: '远程身份验证',
+          title: context.l10n.remoteAuthentication,
           icon: Icons.lock_outline,
           children: [
-            KtField(controller: remoteUsername, label: '用户名'),
-            KtField(controller: remotePassword, label: '密码', obscure: true),
+            KtField(controller: remoteUsername, label: context.l10n.username),
+            KtField(
+              controller: remotePassword,
+              label: context.l10n.password,
+              obscure: true,
+            ),
             KtRow(
               icon: Icons.restore,
-              title: '重置默认账密',
+              title: context.l10n.resetRemoteCredentials,
               sub: 'admin / kikoeta',
               trailing: TextButton(
                 onPressed: _resetRemoteCredentials,
-                child: const Text('重置'),
+                child: Text(context.l10n.reset),
               ),
               showDivider: false,
             ),
           ],
         ),
         KtSection(
-          title: '关于',
+          title: context.l10n.about,
           icon: Icons.info_outline,
           children: [
             Wrap(
@@ -524,7 +575,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 TextButton.icon(
                   onPressed: _openRepository,
                   icon: const Icon(Icons.open_in_new),
-                  label: const Text('项目仓库'),
+                  label: Text(context.l10n.repository),
                 ),
                 OutlinedButton.icon(
                   onPressed: _checkingUpdate ? null : _checkForUpdate,
@@ -535,7 +586,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.system_update_alt),
-                  label: Text(_checkingUpdate ? '正在检查…' : '检查更新'),
+                  label: Text(
+                    _checkingUpdate
+                        ? context.l10n.checkingUpdate
+                        : context.l10n.checkForUpdates,
+                  ),
                 ),
               ],
             ),

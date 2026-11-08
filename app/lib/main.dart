@@ -8,7 +8,10 @@ import 'package:flutter/rendering.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:window_manager/window_manager.dart';
 
+import 'l10n/strings.dart';
 import 'app_state.dart';
+import 'l10n/app_language.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'pages/dict_page.dart';
 import 'pages/models_page.dart';
 import 'pages/model_params_page.dart';
@@ -89,11 +92,13 @@ class _KtAppState extends State<KtApp>
     _revealAnim.addStatusListener(_onRevealStatus);
     ThemeReveal.instance.bind(_switchThemeWithReveal);
     unawaited(_initTray());
+    appState.languageNotifier.addListener(_refreshTrayLanguage);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    appState.languageNotifier.removeListener(_refreshTrayLanguage);
     tray.trayManager.removeListener(this);
     unawaited(tray.trayManager.destroy());
     windowManager.removeListener(this);
@@ -110,6 +115,13 @@ class _KtAppState extends State<KtApp>
       unawaited(_switchThemeWithReveal('system', null));
     }
   }
+
+  @override
+  void didChangeLocales(List<ui.Locale>? locales) {
+    if (AppLanguage.preference == AppLanguage.system) _refreshTrayLanguage();
+  }
+
+  void _refreshTrayLanguage() => unawaited(_initTray());
 
   /// 切换主题并播放圆形揭示动画。
   ///
@@ -204,10 +216,10 @@ class _KtAppState extends State<KtApp>
       await tray.trayManager.setContextMenu(
         tray.Menu(
           items: [
-            tray.MenuItem(key: 'show_window', label: '显示窗口'),
-            tray.MenuItem(key: 'stop_task', label: '停止任务'),
+            tray.MenuItem(key: 'show_window', label: appL10n.showWindow),
+            tray.MenuItem(key: 'stop_task', label: appL10n.stopTask),
             tray.MenuItem.separator(),
-            tray.MenuItem(key: 'exit_app', label: '退出'),
+            tray.MenuItem(key: 'exit_app', label: appL10n.exitApp),
           ],
         ),
       );
@@ -280,16 +292,16 @@ class _KtAppState extends State<KtApp>
               context: dialogContext,
               barrierDismissible: false,
               builder: (dialogContext) => AlertDialog(
-                title: const Text('任务正在运行'),
-                content: const Text('关闭窗口将停止当前任务，确定要关闭吗？'),
+                title: Text(dialogContext.l10n.activeTaskTitle),
+                content: Text(dialogContext.l10n.closeActiveTask),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('取消'),
+                    child: Text(dialogContext.l10n.cancel),
                   ),
                   FilledButton(
                     onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('确定关闭'),
+                    child: Text(dialogContext.l10n.confirmClose),
                   ),
                 ],
               ),
@@ -314,7 +326,7 @@ class _KtAppState extends State<KtApp>
       if (context != null && context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('设置保存失败，尚未退出：$error')));
+        ).showSnackBar(SnackBar(content: Text(appL10n.exitSaveFailed(error))));
       }
       return;
     }
@@ -345,11 +357,18 @@ class _KtAppState extends State<KtApp>
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: appState.themeNotifier,
+      listenable: Listenable.merge([
+        appState.themeNotifier,
+        appState.languageNotifier,
+      ]),
       builder: (context, _) => MaterialApp(
         navigatorKey: navigatorKey,
         title: 'Kikoeta Transl',
         debugShowCheckedModeBanner: false,
+        locale: AppLanguage.localeOverride,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localeListResolutionCallback: AppLanguage.resolveLocales,
         builder: (context, child) {
           // 整个窗口都在根 RepaintBoundary 里：主题切换的圆形揭示
           // 既要抓它的截图，也要盖住它
@@ -411,9 +430,9 @@ class Shell extends StatelessWidget {
     unawaited(
       _app.selectTab(index).catchError((Object error) {
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('自动保存失败，已留在当前页面：$error')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(appL10n.autoSaveFailed(error))),
+          );
         }
       }),
     );
@@ -454,7 +473,7 @@ class Shell extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              '最近',
+                              context.l10n.recent,
                               style: TextStyle(
                                 color: _app.tab == 7 ? p.accent : p.dim,
                                 fontSize: 12,
@@ -484,41 +503,41 @@ class Shell extends StatelessWidget {
                     fontSize: 12,
                   ),
                   labelType: NavigationRailLabelType.all,
-                  destinations: const [
+                  destinations: [
                     NavigationRailDestination(
                       icon: Icon(Icons.playlist_play_outlined),
                       selectedIcon: Icon(Icons.playlist_play),
-                      label: Text('任务'),
+                      label: Text(context.l10n.tasks),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.memory_outlined),
                       selectedIcon: Icon(Icons.memory),
-                      label: Text('模型'),
+                      label: Text(context.l10n.models),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.tune_outlined),
                       selectedIcon: Icon(Icons.tune),
-                      label: Text('听写参数'),
+                      label: Text(context.l10n.asrParameters),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.tune_outlined),
                       selectedIcon: Icon(Icons.tune),
-                      label: Text('模型参数'),
+                      label: Text(context.l10n.modelParameters),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.menu_book_outlined),
                       selectedIcon: Icon(Icons.menu_book),
-                      label: Text('字典'),
+                      label: Text(context.l10n.dictionaries),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.outbox_outlined),
                       selectedIcon: Icon(Icons.outbox),
-                      label: Text('输出'),
+                      label: Text(context.l10n.output),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.settings_outlined),
                       selectedIcon: Icon(Icons.settings),
-                      label: Text('设置'),
+                      label: Text(context.l10n.settings),
                     ),
                   ],
                 ),

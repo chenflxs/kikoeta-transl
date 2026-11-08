@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
+import '../l10n/strings.dart';
+
 class EngineClient {
   EngineClient({this.baseUrl = 'http://127.0.0.1:18765'});
 
@@ -42,11 +44,11 @@ class EngineClient {
     final python = _python();
     final server = _serverPath();
     if (python == null) {
-      startupError = '未找到可用的 Python 3 解释器';
+      startupError = appL10n.pythonNotFound;
       return false;
     }
     if (server == null) {
-      startupError = '未找到 engine/server.py';
+      startupError = appL10n.engineScriptNotFound;
       return false;
     }
     final engineDir = p.dirname(server);
@@ -71,7 +73,7 @@ class EngineClient {
       );
       _watchProcess(_process!);
     } on ProcessException catch (error) {
-      startupError = '无法启动 Python：${error.message}';
+      startupError = appL10n.pythonStartFailed(error.message);
       return false;
     }
     for (var i = 0; i < 30; i++) {
@@ -84,8 +86,8 @@ class EngineClient {
     }
     final detail = _startupOutput.toString().trim();
     startupError ??= detail.isEmpty
-        ? '等待 engine 响应超时'
-        : '等待 engine 响应超时：$detail';
+        ? appL10n.engineTimeout
+        : appL10n.engineTimeoutDetails(detail);
     return false;
   }
 
@@ -169,8 +171,8 @@ class EngineClient {
       _stopHeartbeat();
       final detail = _startupOutput.toString().trim();
       startupError = detail.isEmpty
-          ? 'engine 已退出（退出码 $code）'
-          : 'engine 已退出：$detail';
+          ? appL10n.engineExitedCode(code)
+          : appL10n.engineExitedDetails(detail);
     });
   }
 
@@ -305,7 +307,7 @@ class EngineClient {
     );
     final payload = _decode(res);
     if (res.statusCode != 201) {
-      throw StateError(payload['error']?.toString() ?? '提交任务失败');
+      throw StateError(payload['error']?.toString() ?? appL10n.jobSubmitFailed);
     }
     return payload;
   }
@@ -328,7 +330,9 @@ class EngineClient {
         .timeout(const Duration(seconds: 8));
     final payload = _decode(res);
     if (res.statusCode != 200) {
-      throw StateError(payload['error']?.toString() ?? '加载最近任务失败');
+      throw StateError(
+        payload['error']?.toString() ?? appL10n.recentLoadFailed,
+      );
     }
     final items = payload['entries'];
     if (items is! List) return const [];
@@ -344,7 +348,9 @@ class EngineClient {
         .timeout(const Duration(seconds: 30));
     final payload = _decode(res);
     if (res.statusCode != 200) {
-      throw StateError(payload['error']?.toString() ?? '清理缓存失败');
+      throw StateError(
+        payload['error']?.toString() ?? appL10n.cacheClearFailed,
+      );
     }
     return (payload['freed_bytes'] as num?)?.toInt() ?? 0;
   }
@@ -355,7 +361,9 @@ class EngineClient {
         .timeout(const Duration(seconds: 30));
     final payload = _decode(res);
     if (res.statusCode != 200) {
-      throw StateError(payload['error']?.toString() ?? '删除最近记录失败');
+      throw StateError(
+        payload['error']?.toString() ?? appL10n.recentDeleteFailed,
+      );
     }
   }
 
@@ -365,7 +373,9 @@ class EngineClient {
         .timeout(const Duration(seconds: 60));
     final payload = _decode(res);
     if (res.statusCode != 200) {
-      throw StateError(payload['error']?.toString() ?? '删除最近记录失败');
+      throw StateError(
+        payload['error']?.toString() ?? appL10n.recentDeleteFailed,
+      );
     }
     return (payload['deleted_count'] as num?)?.toInt() ?? 0;
   }
@@ -376,7 +386,9 @@ class EngineClient {
         .timeout(const Duration(seconds: 8));
     final payload = _decode(res);
     if (res.statusCode != 200) {
-      throw StateError(payload['error']?.toString() ?? '加载歌词缓存失败');
+      throw StateError(
+        payload['error']?.toString() ?? appL10n.lyricsCacheLoadFailed,
+      );
     }
     return [
       for (final item in payload['entries'] as List)
@@ -390,7 +402,9 @@ class EngineClient {
         .timeout(const Duration(seconds: 75));
     final payload = _decode(res);
     if (res.statusCode != 200 || payload['uploaded'] != 1) {
-      throw StateError(payload['error']?.toString() ?? '推送歌词缓存失败');
+      throw StateError(
+        payload['error']?.toString() ?? appL10n.lyricsCachePushFailed,
+      );
     }
   }
 
@@ -531,9 +545,7 @@ class EngineClient {
     return {
       'ffmpeg': ffmpeg ?? '',
       'ffprobe': ffprobe ?? '',
-      'ffmpeg_error': ffmpeg == null
-          ? '未找到 ffmpeg。请将 ffmpeg.exe 放到 bin/ffmpeg/bin'
-          : '',
+      'ffmpeg_error': ffmpeg == null ? appL10n.ffmpegNotFound : '',
       'asr': {
         'dir': asrDir.path,
         'models': models,
@@ -565,14 +577,14 @@ class EngineClient {
       },
       'dict_dir': dictDir.path,
       'gt_dicts': dicts,
-      'source_langs': const [
+      'source_langs': [
         {'id': 'ja', 'label': 'ja · 日本語'},
         {'id': 'en', 'label': 'en · English'},
         {'id': 'zh', 'label': 'zh · 中文'},
         {'id': 'ko', 'label': 'ko · 한국어'},
         {'id': 'ru', 'label': 'ru · русский'},
         {'id': 'fr', 'label': 'fr · Français'},
-        {'id': 'auto', 'label': 'auto · 自动检测'},
+        {'id': 'auto', 'label': appL10n.autoDetectLanguage},
       ],
       'target_langs': const [
         {'id': 'zh-cn', 'label': 'zh-cn · 简体中文'},
@@ -583,12 +595,12 @@ class EngineClient {
         {'id': 'ru', 'label': 'ru · русский'},
         {'id': 'fr', 'label': 'fr · Français'},
       ],
-      'translators': const [
+      'translators': [
         {'id': 'ForGal-json', 'label': 'ForGal-json · Gal JSON'},
-        {'id': 'ForNovel', 'label': 'ForNovel · 小说 / 其他文本'},
+        {'id': 'ForNovel', 'label': appL10n.forNovelTranslator},
         {'id': 'ForGal-tsv', 'label': 'ForGal-tsv · Gal TSV'},
-        {'id': 'galtransl-v3', 'label': 'galtransl-v3 · Sakura 接口'},
-        {'id': 'sakura-v1.0', 'label': 'sakura-v1.0 · Sakura 接口'},
+        {'id': 'galtransl-v3', 'label': appL10n.galtranslSakuraTranslator},
+        {'id': 'sakura-v1.0', 'label': appL10n.sakuraTranslator},
       ],
     };
   }

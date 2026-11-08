@@ -1,0 +1,688 @@
+{
+  "@@locale": "zh",
+  "engineConnecting": "正在连接 engine…",
+  "engineConnected": "engine 已连接",
+  "engineStartHelp": "{arg1}，请手动运行 python engine/server.py",
+  "@engineStartHelp": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "engineStartFailed": "未能启动 engine",
+  "toolDetectionFailed": "工具检测失败：{arg1}",
+  "@toolDetectionFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "addFilesFirst": "请先添加文件",
+  "jobStarted": "任务已开始",
+  "jobSubmitError": "提交任务失败：{arg1}",
+  "@jobSubmitError": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "jobStopping": "正在停止任务…",
+  "jobStopRequested": "已请求停止任务，正在等待当前阶段结束",
+  "jobPausedMessage": "任务已暂存",
+  "jobEnded": "任务结束：{arg1}",
+  "@jobEnded": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "eventTimeoutRetry": "等待 engine 事件超时，将继续轮询",
+  "pollFailed": "轮询失败: {arg1}",
+  "@pollFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "jobResumed": "任务继续处理中",
+  "showingKikoetaLogs": "正在显示由 kikoeta 发起的任务日志",
+  "showWindow": "显示窗口",
+  "stopTask": "停止任务",
+  "exitApp": "退出",
+  "activeTaskTitle": "任务正在运行",
+  "closeActiveTask": "关闭窗口将停止当前任务，确定要关闭吗？",
+  "cancel": "取消",
+  "confirmClose": "确定关闭",
+  "exitSaveFailed": "设置保存失败，尚未退出：{arg1}",
+  "@exitSaveFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "autoSaveFailed": "自动保存失败，已留在当前页面：{arg1}",
+  "@autoSaveFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "recent": "最近",
+  "tasks": "任务",
+  "models": "模型",
+  "asrParameters": "听写参数",
+  "modelParameters": "模型参数",
+  "dictionaries": "字典",
+  "output": "输出",
+  "settings": "设置",
+  "gptDictionary": "GPT 字典",
+  "postTranslation": "译后",
+  "preTranslation": "译前",
+  "dictionaryReadFailed": "无法读取字典：{arg1}",
+  "@dictionaryReadFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "dictionarySaved": "字典已保存",
+  "dictionaryRefreshFailed": "字典已保存，但刷新失败：{arg1}",
+  "@dictionaryRefreshFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "dictionaryDescription": "直接使用 GalTransl 内置 Dict。点击条目会在 kikoeta-transl 内置编辑器中打开。",
+  "dictionariesFound": "已刷新，发现 {arg1} 个字典",
+  "@dictionariesFound": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "refreshFailed": "刷新失败：{arg1}",
+  "@refreshFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "refreshDictionaries": "刷新字典",
+  "noDictionaries": "未找到字典文件",
+  "dictionaryEntryCount": "{arg1} 条 · 点击编辑",
+  "@dictionaryEntryCount": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "saveFailed": "保存失败：{arg1}",
+  "@saveFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "saving": "保存中…",
+  "save": "保存",
+  "modelSettingsSaved": "模型设置已保存",
+  "noAsrModels": "未扫描到 ASR 模型",
+  "noAsrModelsIn": "未扫描到 ASR 模型：{arg1}",
+  "@noAsrModelsIn": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "asrModelsFound": "已扫描到 {arg1} 个 ASR 模型",
+  "@asrModelsFound": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "asrScanFailed": "ASR 模型刷新失败：{arg1}",
+  "@asrScanFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "noLlamaModels": "未扫描到 Llama 模型",
+  "noLlamaModelsIn": "未扫描到 Llama 模型：{arg1}",
+  "@noLlamaModelsIn": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "llamaModelsFound": "已扫描到 {arg1} 个 Llama 模型",
+  "@llamaModelsFound": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "llamaScanFailed": "Llama 模型刷新失败：{arg1}",
+  "@llamaScanFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "modelPathMissing": "未获取到 {arg1} 模型路径",
+  "@modelPathMissing": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "modelPathNotFound": "{arg1} 模型路径不存在：{arg2}",
+  "@modelPathNotFound": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      }
+    }
+  },
+  "modelPathOpenFailed": "无法打开 {arg1} 模型路径：{arg2}",
+  "@modelPathOpenFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      }
+    }
+  },
+  "apiUrlRequired": "请先填写 API 地址",
+  "modelsFetched": "已获取 {arg1} 个模型",
+  "@modelsFetched": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "modelListFailed": "模型列表获取失败：{arg1}",
+  "@modelListFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "modelFile": "模型文件",
+  "asrModelHint": "bin/crispasr 下的 gguf 文件名",
+  "sourceLanguage": "源语言",
+  "scanning": "正在扫描…",
+  "queryModels": "查询模型列表",
+  "openModelPath": "打开模型路径",
+  "localLlama": "本地 Llama",
+  "localLlamaDescription": "本项目以单模型模式运行 llama-server，同一时间只挂载一个 GGUF 模型。矫正和翻译选择“本地”时，将共同使用此处选择的模型。切换模型后，llama-server 会在下一次本地任务开始前重新启动。",
+  "llamaModelHint": "bin/llama 下的 GGUF 文件名",
+  "fixedPort": "固定端口",
+  "correction": "矫正",
+  "connectionMode": "连接方式",
+  "online": "在线",
+  "sharedModel": "共享模型",
+  "noModelSelected": "尚未选择模型",
+  "apiUrl": "API 地址",
+  "modelName": "模型名",
+  "querying": "正在查询…",
+  "translation": "翻译",
+  "translator": "翻译器",
+  "indexCompatibility": "Index-Translate 兼容模式",
+  "indexCompatibilityDescription": "使用官方脚本的请求标识和思考参数格式，并固定关闭思考模式。",
+  "openAiUrl": "OpenAI 兼容地址",
+  "targetLanguage": "目标语言",
+  "modelParametersSaved": "模型参数已保存",
+  "modelParametersDescription": "配置矫正模型与翻译模型的提示词及请求参数。",
+  "correctionPrompt": "补充校对要求（可选）",
+  "correctionPromptHint": "内置规则始终生效；含混内容保留原文，并写入矫正记录供回听",
+  "enableThinking": "启用思考/推理",
+  "thinkingDisabledDescription": "关闭后请求会发送 thinking.type=disabled（接口支持时生效）",
+  "promptMode": "Prompt 工作模式",
+  "appendPrompt": "衔接到默认提示词尾部",
+  "overwritePrompt": "直接覆盖默认提示词",
+  "translationPrompt": "翻译 Prompt",
+  "translationPromptHint": "留空则不修改默认提示词",
+  "contextSentences": "上下文句数",
+  "batchSentences": "单次翻译句数",
+  "tokenLimit": "Token 上限",
+  "indexThinkingDisabled": "Index 兼容模式下固定关闭思考。",
+  "targetLrc": "目标 LRC",
+  "targetLrcDescription": "单语歌词，kikoeta 优先匹配",
+  "targetSrt": "目标 SRT",
+  "targetSrtDescription": "单语字幕",
+  "bilingualLrc": "双语 LRC",
+  "translationFirstDescription": "同一文件内译文 + 原文",
+  "bilingualSrt": "双语 SRT",
+  "sourceTargetLrc": "原文 + 目标 LRC",
+  "sourceFirstDescription": "同一文件内原文 + 译文",
+  "sourceTargetSrt": "原文 + 目标 SRT",
+  "outputSettingsSaved": "输出设置已保存",
+  "readingLyricsCache": "正在读取歌词缓存…",
+  "pushingCacheProgress": "正在推送 {arg1}/{arg2}：{arg3}",
+  "@pushingCacheProgress": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      },
+      "arg3": {
+        "type": "Object"
+      }
+    }
+  },
+  "noLyricsCacheToPush": "暂无可推送的 Kikoeta 歌词缓存",
+  "cachePushCompleted": "推送完成：成功 {arg1} 个，失败 {arg2} 个",
+  "@cachePushCompleted": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      }
+    }
+  },
+  "cachePushFailed": "推送未完成：{arg1}",
+  "@cachePushFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "files": "文件",
+  "outputDirectory": "输出目录",
+  "outputDirectoryHint": "留空则输出到源文件所在目录",
+  "chooseDirectory": "选择目录",
+  "useSourceDirectory": "使用源文件目录",
+  "format": "格式",
+  "outputFormat": "输出格式",
+  "llsSyncTitle": "来自 Kikoeta 的翻译请求，产物同步上传到 Kikoeta-LLS",
+  "llsSyncDescription": "任务成功完成后上传歌词；本地任务不受影响",
+  "llsUrl": "Kikoeta-LLS 地址（HTTP/HTTPS）",
+  "llsUrlHint": "留空使用本机 http://127.0.0.1:2378",
+  "uploadAuthentication": "上传验证方式",
+  "twelveCharacterKey": "12 位密钥",
+  "separateCredentials": "独立账号和密码",
+  "uploadKey": "上传密钥",
+  "uploadKeyHint": "在 Kikoeta-LLS 设置页生成或手动设置 12 位密钥",
+  "uploadUsername": "上传账号",
+  "uploadPassword": "上传密码",
+  "lyricsCache": "歌词缓存",
+  "lyricsCacheDescription": "将最近 5 次 Kikoeta 任务中保留的 LRC 缓存推送到 LLS。使用上方地址和验证配置，无需开启自动同步。同名歌词会覆盖，推送后保留本地缓存。",
+  "pushingCache": "正在推送…",
+  "pushCacheToLls": "将缓存推送到 LLS",
+  "viewFailureDetails": "查看失败详情",
+  "asrPresetSaved": "听写预设已保存",
+  "presetSwitchFailed": "切换预设失败：{arg1}",
+  "@presetSwitchFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "asrParametersDescription": "媒体听写使用的 CrispASR 参数。字幕输入不会走到这一步。",
+  "basicSegmentation": "基础与分段",
+  "startOffsetMs": "起始偏移（毫秒）",
+  "segmentOffset": "起始片段偏移",
+  "processingDurationMs": "处理时长（毫秒）",
+  "zeroMeansAll": "0 表示全部",
+  "maxTextContext": "最大文本上下文",
+  "maxSegmentLength": "最大片段长度",
+  "chunkSecondsWithoutVad": "无 VAD 时分段秒数",
+  "chunkOverlapSeconds": "分段重叠秒数",
+  "forceAligner": "强制 Aligner",
+  "splitOnPunctuation": "按标点切分",
+  "splitOnWord": "按单词切分",
+  "vadAndPunctuation": "VAD 与标点",
+  "disablePunctuation": "禁用标点",
+  "maxSpeechSeconds": "最大语音时长（秒）",
+  "minSilenceMs": "最小静音（毫秒）",
+  "vadModel": "VAD 模型",
+  "vadModelHint": "可输入模型别名或路径",
+  "vadThreshold": "VAD 阈值",
+  "hotwords": "热词（逗号分隔）",
+  "recognitionSensitivity": "识别敏感度",
+  "punctuationModel": "标点模型",
+  "leaveEmptyForDefault": "留空使用默认",
+  "truecaseModel": "大小写模型",
+  "truecaseModelHint": "auto 或模型路径",
+  "flushSrtEveryN": "每 N 段刷新 SRT",
+  "flushSrtHint": "1 表示逐段输出日志",
+  "decoding": "解码",
+  "bestOf": "候选数 best-of",
+  "audioContext": "音频上下文",
+  "wordTimestampThreshold": "词时间戳阈值",
+  "entropyThreshold": "熵阈值",
+  "logProbabilityThreshold": "对数概率阈值",
+  "noSpeechThreshold": "无语音阈值",
+  "randomSeed": "随机种子",
+  "disableTemperatureFallback": "禁用温度回退",
+  "device": "设备",
+  "disableGpu": "禁用 GPU",
+  "threads": "线程数",
+  "processors": "处理器数",
+  "gpuDeviceIndex": "GPU 设备编号",
+  "gpuBackend": "GPU 后端",
+  "advancedTemplate": "高级模板",
+  "restoreDefaults": "恢复默认",
+  "editCommandTemplate": "编辑命令模板",
+  "fullCommandTemplate": "完整命令模板",
+  "commandTemplateHint": "根据上方参数实时生成；可手动编辑后保存",
+  "commandTemplateDescription": "手动编辑后保存会解析参数；未知参数保留在模板中。",
+  "fileNotFound": "文件不存在",
+  "openFileFailed": "打开文件失败：{arg1}",
+  "@openFileFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteTranslationCacheTitle": "删除翻译缓存？",
+  "deleteTranslationCacheDescription": "仅删除此任务的 GalTransl 工作缓存；已导出的成果文件和 Kikoeta 歌词同步缓存不会删除。",
+  "deleteCache": "删除缓存",
+  "cacheFreed": "已清理 {arg1} 翻译缓存",
+  "@cacheFreed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "cleanupFailed": "清理失败：{arg1}",
+  "@cleanupFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteRecentTitle": "删除这条最近记录？",
+  "deleteRecentDescription": "将删除此任务的工作文件和缓存，并从最近列表移除记录。已导出的成果文件会保留。",
+  "deleteRecord": "删除记录",
+  "recordDeleted": "记录已删除，成果文件已保留",
+  "deleteFailed": "删除失败：{arg1}",
+  "@deleteFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteAllRecentTitle": "删除全部最近记录？",
+  "deleteAllRecentDescription": "将删除当前 {arg1} 条记录对应的工作文件和缓存。已导出的成果文件会保留。",
+  "@deleteAllRecentDescription": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteAll": "全部删除",
+  "recordsDeleted": "已删除 {arg1} 条记录，成果文件已保留",
+  "@recordsDeleted": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "legacyTask": "旧任务",
+  "recentDescription": "最近的翻译任务与 GalTransl 工作缓存。清理缓存不会删除导出的文件。",
+  "deleteAllRecords": "一键删除所有记录",
+  "refresh": "刷新",
+  "loadFailed": "加载失败",
+  "translationHistory": "翻译记录",
+  "noTranslationCache": "暂无翻译缓存",
+  "kikoetaSourceSuffix": " · 来自 Kikoeta",
+  "statusCompleted": "已完成",
+  "statusFailed": "失败",
+  "statusCancelled": "已取消",
+  "recentTaskDetails": "{arg1} · {arg2}{arg3} · 缓存 {arg4}",
+  "@recentTaskDetails": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      },
+      "arg3": {
+        "type": "Object"
+      },
+      "arg4": {
+        "type": "Object"
+      }
+    }
+  },
+  "clearing": "清理中",
+  "deleteRecordKeepOutput": "删除记录（保留成果文件）",
+  "noLyricsOutput": "暂无可显示的成品歌词",
+  "open": "打开",
+  "fileMoved": "文件已移走",
+  "invalidRemoteCredentials": "远程用户名或密码无效",
+  "remoteRestartFailed": "远程服务重启失败",
+  "settingsSaved": "设置已保存",
+  "remoteCredentialsRequired": "远程用户名和密码不能为空",
+  "remoteUsernameColon": "远程用户名不能包含冒号",
+  "remoteCredentialsReset": "远程账密已重置为 admin / kikoeta",
+  "toolsRefreshed": "已刷新工具检测",
+  "releaseMissingVersion": "GitHub Release 未提供版本号",
+  "githubStatus": "GitHub 返回 {arg1}",
+  "@githubStatus": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "releaseFeedStatus": "GitHub API 返回 403，Release Feed 返回 {arg1}",
+  "@releaseFeedStatus": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "releaseFeedEmpty": "Release Feed 中没有发布版本",
+  "releaseFeedMissingVersion": "Release Feed 未提供版本号",
+  "invalidVersion": "版本号格式无效",
+  "updateAvailable": "发现新版本 {arg1}（当前 {arg2}）",
+  "@updateAvailable": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      }
+    }
+  },
+  "alreadyLatest": "当前已是最新版本（{arg1}）",
+  "@alreadyLatest": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "updateCheckFailed": "检查更新失败：{arg1}",
+  "@updateCheckFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "tools": "工具",
+  "notDetected": "未检测",
+  "executableNotFound": "未找到可执行文件",
+  "paths": "路径",
+  "ffmpegPath": "ffmpeg 路径",
+  "crispAsrDirectory": "CrispASR 目录",
+  "httpProxy": "HTTP 代理",
+  "chooseCrispAsrDirectory": "选择 CrispASR 目录",
+  "interfaceAndService": "界面与服务",
+  "theme": "主题",
+  "followSystem": "跟随系统",
+  "lightTheme": "浅色",
+  "darkTheme": "深色",
+  "allowRemoteAccess": "允许远程访问",
+  "remoteListenAll": "服务监听 0.0.0.0:2370",
+  "remoteListenLocal": "服务仅监听 127.0.0.1:2370",
+  "remoteAuthentication": "远程身份验证",
+  "username": "用户名",
+  "password": "密码",
+  "resetRemoteCredentials": "重置默认账密",
+  "reset": "重置",
+  "about": "关于",
+  "repository": "项目仓库",
+  "checkingUpdate": "正在检查…",
+  "checkForUpdates": "检查更新",
+  "exportLogs": "导出日志",
+  "logsExported": "日志已导出",
+  "logExportFailed": "日志导出失败：{arg1}",
+  "@logExportFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "statusQueued": "待处理",
+  "statusRunning": "处理中",
+  "statusPausing": "正在暂存",
+  "statusPaused": "已暂存",
+  "statusCancelling": "正在取消",
+  "processingStages": "处理阶段",
+  "transcodeAndAsr": "转码 + ASR",
+  "transcodeDescription": "音频 / 视频必做；字幕输入自动跳过",
+  "fixed": "固定",
+  "correctionStageDescription": "只修听写，不翻译",
+  "translationStageDescription": "使用已配置的翻译器",
+  "inputFiles": "输入文件",
+  "clearFileList": "清空列表",
+  "dropFilesHint": "拖入音视频或字幕，或点击选择",
+  "selectedFiles": "已选择 {arg1} 个文件，点击继续添加",
+  "@selectedFiles": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "removeFile": "移除文件",
+  "submitting": "正在提交…",
+  "stopping": "正在停止…",
+  "stopWorkflow": "停止工作流",
+  "startProcessing": "开始处理",
+  "currentWorkflow": "当前工作流",
+  "fromKikoeta": "来自 Kikoeta",
+  "localTask": "本地任务",
+  "logs": "日志",
+  "noLogs": "尚无日志",
+  "pythonNotFound": "未找到可用的 Python 3 解释器",
+  "engineScriptNotFound": "未找到 engine/server.py",
+  "pythonStartFailed": "无法启动 Python：{arg1}",
+  "@pythonStartFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "engineTimeout": "等待 engine 响应超时",
+  "engineTimeoutDetails": "等待 engine 响应超时：{arg1}",
+  "@engineTimeoutDetails": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "engineExitedCode": "engine 已退出（退出码 {arg1}）",
+  "@engineExitedCode": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "engineExitedDetails": "engine 已退出：{arg1}",
+  "@engineExitedDetails": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "jobSubmitFailed": "提交任务失败",
+  "recentLoadFailed": "加载最近任务失败",
+  "cacheClearFailed": "清理缓存失败",
+  "recentDeleteFailed": "删除最近记录失败",
+  "lyricsCacheLoadFailed": "加载歌词缓存失败",
+  "lyricsCachePushFailed": "推送歌词缓存失败",
+  "ffmpegNotFound": "未找到 ffmpeg。请将 ffmpeg.exe 放到 bin/ffmpeg/bin",
+  "autoDetectLanguage": "auto · 自动检测",
+  "forNovelTranslator": "ForNovel · 小说 / 其他文本",
+  "galtranslSakuraTranslator": "galtransl-v3 · Sakura 接口",
+  "sakuraTranslator": "sakura-v1.0 · Sakura 接口",
+  "presetNameRequired": "请输入预设名称",
+  "presetNameExists": "名称已存在，请使用其他名称",
+  "saveAsrPresetAs": "另存听写预设",
+  "presetName": "预设名称",
+  "comboInputHint": "输入或从列表选择",
+  "openList": "打开列表",
+  "noPresetOptions": "暂无预置选项，可直接输入",
+  "saveAs": "另存为",
+  "presets": "预设",
+  "asrPreset": "听写预设",
+  "basePresetLabel": "{arg1}（基础）",
+  "@basePresetLabel": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "basePresetDescription": "基础预设修改后需另存；离页时自动保存为自定义预设。",
+  "restorePreset": "恢复预设",
+  "uiLanguage": "界面语言",
+  "llamaStopped": "已停止",
+  "llamaStarting": "正在启动",
+  "llamaReady": "已就绪"
+}

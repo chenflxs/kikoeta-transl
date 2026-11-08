@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
@@ -194,13 +195,21 @@ class _ModelsPageState extends State<ModelsPage> {
     ];
   }
 
-  Map<String, String> _labels(dynamic raw) {
+  Map<String, String> _labels(dynamic raw, {bool catalog = false}) {
     if (raw is! List) return const {};
     final out = <String, String>{};
     for (final item in raw) {
       if (item is Map) {
         final id = '${item['id'] ?? ''}'.trim();
-        final label = '${item['label'] ?? id}'.trim();
+        final label = catalog
+            ? switch (id) {
+                'auto' => appL10n.autoDetectLanguage,
+                'ForNovel' => appL10n.forNovelTranslator,
+                'galtransl-v3' => appL10n.galtranslSakuraTranslator,
+                'sakura-v1.0' => appL10n.sakuraTranslator,
+                _ => '${item['label'] ?? id}'.trim(),
+              }
+            : '${item['label'] ?? id}'.trim();
         if (id.isNotEmpty) out[id] = label;
       }
     }
@@ -265,7 +274,7 @@ class _ModelsPageState extends State<ModelsPage> {
       next['translate'] = translate;
     });
     _savedDraft = draft;
-    if (!auto) _toast('模型设置已保存');
+    if (!auto) _toast(appL10n.modelSettingsSaved);
   }
 
   Future<void> _queryAsr() async {
@@ -275,12 +284,12 @@ class _ModelsPageState extends State<ModelsPage> {
       final models = _ids(_asr['models']);
       final dir = '${_asr['dir'] ?? ''}';
       if (models.isEmpty) {
-        _toast(dir.isEmpty ? '未扫描到 ASR 模型' : '未扫描到 ASR 模型：$dir');
+        _toast(dir.isEmpty ? appL10n.noAsrModels : appL10n.noAsrModelsIn(dir));
       } else {
-        _toast('已扫描到 ${models.length} 个 ASR 模型');
+        _toast(appL10n.asrModelsFound(models.length));
       }
     } catch (e) {
-      _toast('ASR 模型刷新失败：$e');
+      _toast(appL10n.asrScanFailed(e));
     } finally {
       if (mounted) setState(() => queryingAsr = false);
     }
@@ -297,12 +306,14 @@ class _ModelsPageState extends State<ModelsPage> {
       final models = _ids(_llama['models']);
       final dir = '${_llama['dir'] ?? ''}';
       if (models.isEmpty) {
-        _toast(dir.isEmpty ? '未扫描到 Llama 模型' : '未扫描到 Llama 模型：$dir');
+        _toast(
+          dir.isEmpty ? appL10n.noLlamaModels : appL10n.noLlamaModelsIn(dir),
+        );
       } else {
-        _toast('已扫描到 ${models.length} 个 Llama 模型');
+        _toast(appL10n.llamaModelsFound(models.length));
       }
     } catch (e) {
-      _toast('Llama 模型刷新失败：$e');
+      _toast(appL10n.llamaScanFailed(e));
     } finally {
       if (mounted) setState(() => queryingLlama = false);
     }
@@ -315,7 +326,11 @@ class _ModelsPageState extends State<ModelsPage> {
   Future<void> _openModelDirectory(String rawPath, String name) async {
     final path = rawPath.trim();
     if (path.isEmpty || !Directory(path).existsSync()) {
-      _toast(path.isEmpty ? '未获取到 $name 模型路径' : '$name 模型路径不存在：$path');
+      _toast(
+        path.isEmpty
+            ? appL10n.modelPathMissing(name)
+            : appL10n.modelPathNotFound(name, path),
+      );
       return;
     }
     try {
@@ -331,7 +346,7 @@ class _ModelsPageState extends State<ModelsPage> {
         ], mode: ProcessStartMode.detached);
       }
     } catch (e) {
-      _toast('无法打开 $name 模型路径：$e');
+      _toast(appL10n.modelPathOpenFailed(name, e));
     }
   }
 
@@ -339,7 +354,7 @@ class _ModelsPageState extends State<ModelsPage> {
     final base = (correct ? correctBase : transBase).text.trim();
     final key = (correct ? correctKey : transKey).text.trim();
     if (base.isEmpty) {
-      _toast('请先填写 API 地址');
+      _toast(appL10n.apiUrlRequired);
       return;
     }
     setState(() {
@@ -368,9 +383,9 @@ class _ModelsPageState extends State<ModelsPage> {
           }
         }
       });
-      _toast('已获取 ${models.length} 个模型');
+      _toast(appL10n.modelsFetched(models.length));
     } catch (e) {
-      _toast('模型列表获取失败：$e');
+      _toast(appL10n.modelListFailed(e));
     } finally {
       if (mounted) {
         setState(() {
@@ -407,12 +422,12 @@ class _ModelsPageState extends State<ModelsPage> {
         final targetLangs = _ids(widget.app.tools['target_langs']);
         final translators = _ids(widget.app.tools['translators']);
         return KtPage(
-          title: '模型',
+          title: context.l10n.models,
           footer: Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
               onPressed: () => _save(),
-              child: const Text('保存'),
+              child: Text(context.l10n.save),
             ),
           ),
           children: [
@@ -422,8 +437,8 @@ class _ModelsPageState extends State<ModelsPage> {
               children: [
                 KtComboField(
                   controller: asrModel,
-                  label: '模型文件',
-                  hint: 'bin/crispasr 下的 gguf 文件名',
+                  label: context.l10n.modelFile,
+                  hint: context.l10n.asrModelHint,
                   options: asrModels,
                 ),
                 KtComboField(
@@ -440,12 +455,15 @@ class _ModelsPageState extends State<ModelsPage> {
                 ),
                 KtComboField(
                   controller: asrLang,
-                  label: '源语言',
+                  label: context.l10n.sourceLanguage,
                   hint: 'ja',
                   options: sourceLangs.isEmpty
                       ? const ['ja', 'en', 'zh', 'ko', 'ru', 'fr', 'auto']
                       : sourceLangs,
-                  labels: _labels(widget.app.tools['source_langs']),
+                  labels: _labels(
+                    widget.app.tools['source_langs'],
+                    catalog: true,
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -466,12 +484,16 @@ class _ModelsPageState extends State<ModelsPage> {
                                   ),
                                 )
                               : const Icon(Icons.refresh, size: 16),
-                          label: Text(queryingAsr ? '正在扫描…' : '查询模型列表'),
+                          label: Text(
+                            queryingAsr
+                                ? context.l10n.scanning
+                                : context.l10n.queryModels,
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: _openAsrDirectory,
                           icon: const Icon(Icons.folder_open, size: 16),
-                          label: const Text('打开模型路径'),
+                          label: Text(context.l10n.openModelPath),
                         ),
                       ],
                     ),
@@ -480,13 +502,10 @@ class _ModelsPageState extends State<ModelsPage> {
               ],
             ),
             KtSection(
-              title: '本地 Llama',
+              title: context.l10n.localLlama,
               icon: Icons.memory_outlined,
               action: Tooltip(
-                message:
-                    '本项目以单模型模式运行 llama-server，同一时间只挂载一个 GGUF 模型。'
-                    '矫正和翻译选择“本地”时，将共同使用此处选择的模型。切换模型后，'
-                    'llama-server 会在下一次本地任务开始前重新启动。',
+                message: context.l10n.localLlamaDescription,
                 child: Icon(
                   Icons.info_outline,
                   size: 18,
@@ -496,17 +515,24 @@ class _ModelsPageState extends State<ModelsPage> {
               children: [
                 KtComboField(
                   controller: llamaModel,
-                  label: '模型文件',
-                  hint: 'bin/llama 下的 GGUF 文件名',
+                  label: context.l10n.modelFile,
+                  hint: context.l10n.llamaModelHint,
                   options: llamaModels,
                   labels: llamaLabels,
                   onChanged: (_) => setState(() {}),
                 ),
                 KtRow(
                   icon: Icons.lan_outlined,
-                  title: '固定端口',
+                  title: context.l10n.fixedPort,
                   sub: '127.0.0.1:${_llama['port'] ?? 18766}',
-                  trailing: Text('${_llama['status'] ?? 'stopped'}'),
+                  trailing: Text(switch (_llama['status'] ?? 'stopped') {
+                    'stopped' => context.l10n.llamaStopped,
+                    'starting' => context.l10n.llamaStarting,
+                    'ready' => context.l10n.llamaReady,
+                    'busy' => context.l10n.statusRunning,
+                    'error' => context.l10n.statusFailed,
+                    final value => '$value',
+                  }),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -527,12 +553,16 @@ class _ModelsPageState extends State<ModelsPage> {
                                   ),
                                 )
                               : const Icon(Icons.refresh, size: 16),
-                          label: Text(queryingLlama ? '正在扫描…' : '查询模型列表'),
+                          label: Text(
+                            queryingLlama
+                                ? context.l10n.scanning
+                                : context.l10n.queryModels,
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: _openLlamaDirectory,
                           icon: const Icon(Icons.folder_open, size: 16),
-                          label: const Text('打开模型路径'),
+                          label: Text(context.l10n.openModelPath),
                         ),
                       ],
                     ),
@@ -541,23 +571,24 @@ class _ModelsPageState extends State<ModelsPage> {
               ],
             ),
             KtSection(
-              title: '矫正',
+              title: context.l10n.correction,
               icon: Icons.auto_fix_high,
               children: [
                 KtSelectField<String>(
-                  label: '连接方式',
+                  label: context.l10n.connectionMode,
                   value: correctProvider,
                   values: const ['online', 'local_llama'],
-                  labelOf: (value) =>
-                      value == 'local_llama' ? '本地 Llama' : '在线',
+                  labelOf: (value) => value == 'local_llama'
+                      ? context.l10n.localLlama
+                      : context.l10n.online,
                   onChanged: (value) => setState(() => correctProvider = value),
                 ),
                 if (correctProvider == 'local_llama') ...[
                   KtRow(
                     icon: Icons.memory,
-                    title: '共享模型',
+                    title: context.l10n.sharedModel,
                     sub: llamaModel.text.trim().isEmpty
-                        ? '尚未选择模型'
+                        ? context.l10n.noModelSelected
                         : llamaModel.text.trim(),
                     trailing: Text('127.0.0.1:${_llama['port'] ?? 18766}'),
                     showDivider: false,
@@ -565,12 +596,12 @@ class _ModelsPageState extends State<ModelsPage> {
                 ] else ...[
                   KtField(
                     controller: correctBase,
-                    label: 'API 地址',
+                    label: context.l10n.apiUrl,
                     hint: 'https://example.com/v1',
                   ),
                   KtComboField(
                     controller: correctModel,
-                    label: '模型名',
+                    label: context.l10n.modelName,
                     options: correctModels,
                   ),
                   KtField(
@@ -595,7 +626,11 @@ class _ModelsPageState extends State<ModelsPage> {
                                 ),
                               )
                             : const Icon(Icons.travel_explore, size: 16),
-                        label: Text(queryingCorrect ? '正在查询…' : '查询模型列表'),
+                        label: Text(
+                          queryingCorrect
+                              ? context.l10n.querying
+                              : context.l10n.queryModels,
+                        ),
                       ),
                     ),
                   ),
@@ -603,21 +638,22 @@ class _ModelsPageState extends State<ModelsPage> {
               ],
             ),
             KtSection(
-              title: '翻译',
+              title: context.l10n.translation,
               icon: Icons.translate_outlined,
               children: [
                 KtSelectField<String>(
-                  label: '连接方式',
+                  label: context.l10n.connectionMode,
                   value: translateProvider,
                   values: const ['online', 'local_llama'],
-                  labelOf: (value) =>
-                      value == 'local_llama' ? '本地 Llama' : '在线',
+                  labelOf: (value) => value == 'local_llama'
+                      ? context.l10n.localLlama
+                      : context.l10n.online,
                   onChanged: (value) =>
                       setState(() => translateProvider = value),
                 ),
                 KtComboField(
                   controller: translator,
-                  label: '翻译器',
+                  label: context.l10n.translator,
                   hint: 'ForGal-json',
                   options: translators.isEmpty
                       ? const [
@@ -628,30 +664,33 @@ class _ModelsPageState extends State<ModelsPage> {
                           'sakura-v1.0',
                         ]
                       : translators,
-                  labels: _labels(widget.app.tools['translators']),
+                  labels: _labels(
+                    widget.app.tools['translators'],
+                    catalog: true,
+                  ),
                 ),
                 if (translateProvider == 'local_llama')
                   KtRow(
                     icon: Icons.memory,
-                    title: '共享模型',
+                    title: context.l10n.sharedModel,
                     sub: llamaModel.text.trim().isEmpty
-                        ? '尚未选择模型'
+                        ? context.l10n.noModelSelected
                         : llamaModel.text.trim(),
                     trailing: Text('127.0.0.1:${_llama['port'] ?? 18766}'),
                   )
                 else ...[
                   KtSwitchRow(
                     icon: Icons.hub_outlined,
-                    title: 'Index-Translate 兼容模式',
-                    sub: '使用官方脚本的请求标识和思考参数格式，并固定关闭思考模式。',
+                    title: context.l10n.indexCompatibility,
+                    sub: context.l10n.indexCompatibilityDescription,
                     value: indexModelCompat,
                     onChanged: (value) =>
                         setState(() => indexModelCompat = value),
                   ),
-                  KtField(controller: transBase, label: 'OpenAI 兼容地址'),
+                  KtField(controller: transBase, label: context.l10n.openAiUrl),
                   KtComboField(
                     controller: transModel,
-                    label: '模型名',
+                    label: context.l10n.modelName,
                     options: translateModels,
                   ),
                   KtField(
@@ -662,12 +701,15 @@ class _ModelsPageState extends State<ModelsPage> {
                 ],
                 KtComboField(
                   controller: targetLang,
-                  label: '目标语言',
+                  label: context.l10n.targetLanguage,
                   hint: 'zh-cn',
                   options: targetLangs.isEmpty
                       ? const ['zh-cn', 'zh-tw', 'en', 'ja', 'ko', 'ru', 'fr']
                       : targetLangs,
-                  labels: _labels(widget.app.tools['target_langs']),
+                  labels: _labels(
+                    widget.app.tools['target_langs'],
+                    catalog: true,
+                  ),
                 ),
                 if (translateProvider == 'online')
                   Padding(
@@ -687,7 +729,11 @@ class _ModelsPageState extends State<ModelsPage> {
                                 ),
                               )
                             : const Icon(Icons.travel_explore, size: 16),
-                        label: Text(queryingTranslate ? '正在查询…' : '查询模型列表'),
+                        label: Text(
+                          queryingTranslate
+                              ? context.l10n.querying
+                              : context.l10n.queryModels,
+                        ),
                       ),
                     ),
                   ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
@@ -196,28 +197,31 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
     if (!auto && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('模型参数已保存')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.modelParametersSaved)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return KtPage(
-      title: '模型参数',
-      description: '配置矫正模型与翻译模型的提示词及请求参数。',
+      title: context.l10n.modelParameters,
+      description: context.l10n.modelParametersDescription,
       footer: Align(
         alignment: Alignment.centerRight,
-        child: FilledButton(onPressed: () => _save(), child: const Text('保存')),
+        child: FilledButton(
+          onPressed: () => _save(),
+          child: Text(context.l10n.save),
+        ),
       ),
       children: [
         KtSection(
-          title: '矫正',
+          title: context.l10n.correction,
           icon: Icons.auto_fix_high,
           children: [
             KtField(
               controller: correctPrompt,
-              label: '补充校对要求（可选）',
-              hint: '内置规则始终生效；含混内容保留原文，并写入矫正记录供回听',
+              label: context.l10n.correctionPrompt,
+              hint: context.l10n.correctionPromptHint,
               maxLines: 6,
             ),
             KtField(
@@ -233,8 +237,8 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
             ),
             KtSwitchRow(
               icon: Icons.psychology,
-              title: '启用思考/推理',
-              sub: '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
+              title: context.l10n.enableThinking,
+              sub: context.l10n.thinkingDisabledDescription,
               value: correctThinkingEnabled,
               showDivider: false,
               onChanged: (value) =>
@@ -243,32 +247,45 @@ class _ModelParamsPageState extends State<ModelParamsPage> {
           ],
         ),
         KtSection(
-          title: '翻译',
+          title: context.l10n.translation,
           icon: Icons.translate_outlined,
           children: [
             KtSelectField<String>(
-              label: 'Prompt 工作模式',
+              label: context.l10n.promptMode,
               value: promptMode,
               values: const ['append', 'overwrite'],
-              labelOf: (value) =>
-                  value == 'append' ? '衔接到默认提示词尾部' : '直接覆盖默认提示词',
+              labelOf: (value) => value == 'append'
+                  ? context.l10n.appendPrompt
+                  : context.l10n.overwritePrompt,
               onChanged: (value) => setState(() => promptMode = value),
             ),
             KtField(
               controller: translatePrompt,
-              label: '翻译 Prompt',
-              hint: '留空则不修改默认提示词',
+              label: context.l10n.translationPrompt,
+              hint: context.l10n.translationPromptHint,
               maxLines: 8,
             ),
-            KtField(controller: contextNum, label: '上下文句数', hint: '10'),
-            KtField(controller: batchSize, label: '单次翻译句数', hint: '10'),
-            KtField(controller: tokenLimit, label: 'Token 上限', hint: '1024'),
+            KtField(
+              controller: contextNum,
+              label: context.l10n.contextSentences,
+              hint: '10',
+            ),
+            KtField(
+              controller: batchSize,
+              label: context.l10n.batchSentences,
+              hint: '10',
+            ),
+            KtField(
+              controller: tokenLimit,
+              label: context.l10n.tokenLimit,
+              hint: '1024',
+            ),
             KtSwitchRow(
               icon: Icons.psychology,
-              title: '启用思考/推理',
+              title: context.l10n.enableThinking,
               sub: indexModelCompat
-                  ? 'Index 兼容模式下固定关闭思考。'
-                  : '关闭后请求会发送 thinking.type=disabled（接口支持时生效）',
+                  ? context.l10n.indexThinkingDisabled
+                  : context.l10n.thinkingDisabledDescription,
               value: indexModelCompat ? false : translateThinkingEnabled,
               enabled: !indexModelCompat,
               onChanged: (value) =>

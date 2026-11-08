@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../l10n/strings.dart';
 import '../app_state.dart';
 import '../widgets.dart';
 
@@ -55,7 +56,9 @@ class _RecentPageState extends State<RecentPage> {
 
   Future<void> _openFile(String path) async {
     try {
-      if (!await File(path).exists()) throw const FileSystemException('文件不存在');
+      if (!await File(path).exists()) {
+        throw FileSystemException(appL10n.fileNotFound);
+      }
       if (Platform.isWindows) {
         await Process.start('explorer.exe', [
           path,
@@ -71,7 +74,7 @@ class _RecentPageState extends State<RecentPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('打开文件失败：$error')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.openFileFailed(error))));
     }
   }
 
@@ -80,19 +83,17 @@ class _RecentPageState extends State<RecentPage> {
     if (id.isEmpty || _deleting != null) return;
     final approved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除翻译缓存？'),
-        content: const Text(
-          '仅删除此任务的 GalTransl 工作缓存；已导出的成果文件和 Kikoeta 歌词同步缓存不会删除。',
-        ),
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.l10n.deleteTranslationCacheTitle),
+        content: Text(dialogContext.l10n.deleteTranslationCacheDescription),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(dialogContext.l10n.cancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除缓存'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(dialogContext.l10n.deleteCache),
           ),
         ],
       ),
@@ -105,12 +106,12 @@ class _RecentPageState extends State<RecentPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('已清理 ${_size(freed)} 翻译缓存')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.cacheFreed(_size(freed)))));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('清理失败：$error')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.cleanupFailed(error))));
     } finally {
       if (mounted) setState(() => _deleting = null);
     }
@@ -121,17 +122,17 @@ class _RecentPageState extends State<RecentPage> {
     if (id.isEmpty || _deleting != null) return;
     final approved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除这条最近记录？'),
-        content: const Text('将删除此任务的工作文件和缓存，并从最近列表移除记录。已导出的成果文件会保留。'),
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.l10n.deleteRecentTitle),
+        content: Text(dialogContext.l10n.deleteRecentDescription),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(dialogContext.l10n.cancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除记录'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(dialogContext.l10n.deleteRecord),
           ),
         ],
       ),
@@ -144,12 +145,12 @@ class _RecentPageState extends State<RecentPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('记录已删除，成果文件已保留')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.recordDeleted)));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.deleteFailed(error))));
     } finally {
       if (mounted) setState(() => _deleting = null);
     }
@@ -160,17 +161,17 @@ class _RecentPageState extends State<RecentPage> {
     final count = _entries.length;
     final approved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除全部最近记录？'),
-        content: Text('将删除当前 $count 条记录对应的工作文件和缓存。已导出的成果文件会保留。'),
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.l10n.deleteAllRecentTitle),
+        content: Text(dialogContext.l10n.deleteAllRecentDescription(count)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(dialogContext.l10n.cancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('全部删除'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(dialogContext.l10n.deleteAll),
           ),
         ],
       ),
@@ -183,13 +184,13 @@ class _RecentPageState extends State<RecentPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('已删除 $deleted 条记录，成果文件已保留')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.recordsDeleted(deleted))));
     } catch (error) {
       if (mounted) await _refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+      ).showSnackBar(SnackBar(content: Text(appL10n.deleteFailed(error))));
     } finally {
       if (mounted) setState(() => _deleting = null);
     }
@@ -206,7 +207,7 @@ class _RecentPageState extends State<RecentPage> {
 
   String _time(String value) {
     final parsed = DateTime.tryParse(value);
-    if (parsed == null) return '旧任务';
+    if (parsed == null) return context.l10n.legacyTask;
     final local = parsed.toLocal();
     String two(int n) => n.toString().padLeft(2, '0');
     return '${local.year}-${two(local.month)}-${two(local.day)} '
@@ -217,19 +218,19 @@ class _RecentPageState extends State<RecentPage> {
   Widget build(BuildContext context) {
     final colors = paletteOf(context);
     return KtPage(
-      title: '最近',
-      description: '最近的翻译任务与 GalTransl 工作缓存。清理缓存不会删除导出的文件。',
+      title: context.l10n.recent,
+      description: context.l10n.recentDescription,
       columns: false,
       actions: [
         IconButton(
-          tooltip: '一键删除所有记录',
+          tooltip: context.l10n.deleteAllRecords,
           onPressed: _loading || _entries.isEmpty || _deleting != null
               ? null
               : _deleteAllEntries,
           icon: const Icon(Icons.delete_sweep_outlined, size: 20),
         ),
         IconButton(
-          tooltip: '刷新',
+          tooltip: context.l10n.refresh,
           onPressed: _loading ? null : _refresh,
           icon: const Icon(Icons.refresh, size: 20),
         ),
@@ -242,7 +243,7 @@ class _RecentPageState extends State<RecentPage> {
           ),
         if (_error != null)
           KtSection(
-            title: '加载失败',
+            title: context.l10n.loadFailed,
             icon: Icons.error_outline,
             children: [
               Text(
@@ -257,10 +258,13 @@ class _RecentPageState extends State<RecentPage> {
           ),
         if (!_loading && _error == null && _entries.isEmpty)
           KtSection(
-            title: '翻译记录',
+            title: context.l10n.translationHistory,
             icon: Icons.history,
             children: [
-              Text('暂无翻译缓存', style: TextStyle(fontSize: 12, color: colors.dim)),
+              Text(
+                context.l10n.noTranslationCache,
+                style: TextStyle(fontSize: 12, color: colors.dim),
+              ),
             ],
           ),
         for (final entry in _entries) _entryCard(entry),
@@ -285,12 +289,14 @@ class _RecentPageState extends State<RecentPage> {
         .toList();
     final bytes = (entry['cache_bytes'] as num?)?.toInt() ?? 0;
     final cacheCount = (entry['cache_dir_count'] as num?)?.toInt() ?? 0;
-    final source = entry['source'] == 'kikoeta' ? ' · 来自 Kikoeta' : '';
+    final source = entry['source'] == 'kikoeta'
+        ? context.l10n.kikoetaSourceSuffix
+        : '';
     final status = switch (entry['status']) {
-      'completed' => '已完成',
-      'failed' => '失败',
-      'cancelled' => '已取消',
-      _ => '旧任务',
+      'completed' => context.l10n.statusCompleted,
+      'failed' => context.l10n.statusFailed,
+      'cancelled' => context.l10n.statusCancelled,
+      _ => context.l10n.legacyTask,
     };
     final statusColor = switch (entry['status']) {
       'completed' => colors.green,
@@ -318,8 +324,12 @@ class _RecentPageState extends State<RecentPage> {
       ),
       children: [
         Text(
-          '${_time('${entry['finished_at'] ?? entry['created_at'] ?? ''}')} '
-          '· $id$source · 缓存 ${_size(bytes)}',
+          context.l10n.recentTaskDetails(
+            _time('${entry['finished_at'] ?? entry['created_at'] ?? ''}'),
+            id,
+            source,
+            _size(bytes),
+          ),
           style: TextStyle(fontSize: 11.5, color: colors.muted, height: 1.4),
         ),
         const SizedBox(height: 10),
@@ -336,10 +346,14 @@ class _RecentPageState extends State<RecentPage> {
                     ? null
                     : () => _deleteCache(entry),
                 icon: const Icon(Icons.delete_outline, size: 18),
-                label: Text(_deleting == id ? '清理中' : '删除缓存'),
+                label: Text(
+                  _deleting == id
+                      ? context.l10n.clearing
+                      : context.l10n.deleteCache,
+                ),
               ),
               IconButton(
-                tooltip: '删除记录（保留成果文件）',
+                tooltip: context.l10n.deleteRecordKeepOutput,
                 onPressed: _deleting != null ? null : () => _deleteEntry(entry),
                 style: IconButton.styleFrom(foregroundColor: colors.red),
                 icon: const Icon(Icons.delete_forever_outlined, size: 20),
@@ -351,7 +365,7 @@ class _RecentPageState extends State<RecentPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              '暂无可显示的成品歌词',
+              context.l10n.noLyricsOutput,
               style: TextStyle(fontSize: 12, color: colors.dim),
             ),
           ),
@@ -365,7 +379,9 @@ class _RecentPageState extends State<RecentPage> {
                 ? () => _openFile('${outputs[i]['path']}')
                 : null,
             trailing: Text(
-              outputs[i]['exists'] == true ? '打开' : '文件已移走',
+              outputs[i]['exists'] == true
+                  ? context.l10n.open
+                  : context.l10n.fileMoved,
               style: TextStyle(fontSize: 11, color: colors.dim),
             ),
           ),

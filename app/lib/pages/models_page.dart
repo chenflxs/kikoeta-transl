@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../app_state.dart';
+import '../services/engine.dart' show fallbackAsrBackends;
 import '../settings_draft.dart';
 import '../widgets.dart';
 
@@ -83,13 +84,13 @@ class _ModelsPageState extends State<ModelsPage> {
   }
 
   void _syncSettings() {
-    if (!mounted || settingsSynced || widget.app.settings.isEmpty) return;
+    if (!mounted || widget.app.settings.isEmpty) return;
     final s = widget.app.settings;
     final asr = (s['asr'] as Map?) ?? {};
     final correct = (s['correct'] as Map?) ?? {};
     final translate = (s['translate'] as Map?) ?? {};
     final openai = (translate['openai'] as Map?) ?? {};
-    final merged = mergeLoadedSettingsDraft(_savedDraft, _draftValues(), {
+    final loaded = <String, dynamic>{
       'asrModel': '${asr['model'] ?? ''}',
       'asrAligner': '${asr['aligner'] ?? ''}',
       'asrBackend': '${asr['backend'] ?? 'qwen3-1.7b'}',
@@ -106,7 +107,13 @@ class _ModelsPageState extends State<ModelsPage> {
       'transKey': '${openai['api_key'] ?? ''}',
       'translator': '${translate['translator'] ?? 'ForGal-json'}',
       'targetLang': '${s['target_lang'] ?? 'zh-cn'}',
-    });
+    };
+    if (settingsSynced && jsonEncode(loaded) == _savedDraft) return;
+    final merged = mergeLoadedSettingsDraft(
+      _savedDraft,
+      _draftValues(),
+      loaded,
+    );
     settingsSynced = true;
     setState(() {
       asrModel.text = merged.values['asrModel'] as String;
@@ -406,18 +413,6 @@ class _ModelsPageState extends State<ModelsPage> {
         final backends = _ids(_asr['backends']);
         final llamaModels = _ids(_llama['models']);
         final llamaLabels = _labels(_llama['models']);
-        const fallbackBackends = [
-          'whisper',
-          'parakeet',
-          'canary',
-          'cohere',
-          'qwen3',
-          'qwen3-1.7b',
-          'mega-asr',
-          'voxtral',
-          'voxtral4b',
-          'granite',
-        ];
         final sourceLangs = _ids(widget.app.tools['source_langs']);
         final targetLangs = _ids(widget.app.tools['target_langs']);
         final translators = _ids(widget.app.tools['translators']);
@@ -451,7 +446,7 @@ class _ModelsPageState extends State<ModelsPage> {
                   controller: asrBackend,
                   label: 'backend',
                   hint: 'qwen3-1.7b',
-                  options: backends.isEmpty ? fallbackBackends : backends,
+                  options: backends.isEmpty ? fallbackAsrBackends : backends,
                 ),
                 KtComboField(
                   controller: asrLang,

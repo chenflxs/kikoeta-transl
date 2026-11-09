@@ -511,7 +511,7 @@ def _tools() -> dict:
     except Exception as exc:
         ffmpeg_error = str(exc)
     try:
-        asr = list_crispasr_models(settings)
+        asr = list_crispasr_models(settings, probe_backends=True)
     except Exception as exc:
         asr = {"models": [], "aligners": [], "executable": "", "backends": [], "error": str(exc)}
     try:

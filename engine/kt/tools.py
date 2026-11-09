@@ -29,6 +29,7 @@ FALLBACK_ASR_BACKENDS = [
     "voxtral",
     "voxtral4b",
     "granite",
+    "moss-diarize",
 ]
 
 SOURCE_LANGS = [
@@ -110,7 +111,9 @@ def list_llama_models(settings: AppSettings) -> dict[str, object]:
     }
 
 
-def list_crispasr_models(settings: AppSettings) -> dict[str, object]:
+def list_crispasr_models(
+    settings: AppSettings, *, probe_backends: bool = False
+) -> dict[str, object]:
     folder = resolve_crispasr_dir(settings)
     exe_name = "crispasr.exe" if os.name == "nt" else "crispasr"
     if not folder.is_dir():
@@ -130,7 +133,7 @@ def list_crispasr_models(settings: AppSettings) -> dict[str, object]:
         "models": models,
         "aligners": aligners,
         "executable": str(exe.resolve()) if exe.is_file() else "",
-        "backends": list(FALLBACK_ASR_BACKENDS),
+        "backends": list_crispasr_backends(settings) if probe_backends else list(FALLBACK_ASR_BACKENDS),
     }
 
 

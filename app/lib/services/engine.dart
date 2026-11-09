@@ -7,6 +7,20 @@ import 'package:path/path.dart' as p;
 
 import '../l10n/strings.dart';
 
+const fallbackAsrBackends = [
+  'whisper',
+  'parakeet',
+  'canary',
+  'cohere',
+  'qwen3',
+  'qwen3-1.7b',
+  'mega-asr',
+  'voxtral',
+  'voxtral4b',
+  'granite',
+  'moss-diarize',
+];
+
 class EngineClient {
   EngineClient({this.baseUrl = 'http://127.0.0.1:18765'});
 
@@ -551,18 +565,7 @@ class EngineClient {
         'models': models,
         'aligners': aligners,
         'executable': asrExe ?? '',
-        'backends': const [
-          'whisper',
-          'parakeet',
-          'canary',
-          'cohere',
-          'qwen3',
-          'qwen3-1.7b',
-          'mega-asr',
-          'voxtral',
-          'voxtral4b',
-          'granite',
-        ],
+        'backends': fallbackAsrBackends,
       },
       'llama': {
         'dir': llamaDir.path,

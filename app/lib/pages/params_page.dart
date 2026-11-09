@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../asr_preset_models.dart';
 import '../l10n/strings.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
@@ -152,6 +153,10 @@ class _ParamsPageState extends State<ParamsPage> {
             item.key: item.value is bool
                 ? (raw[item.key] is bool ? raw[item.key] : item.value)
                 : '${raw[item.key] ?? item.value}',
+          'base_preset': ?asrPresetFamily(
+            entry.key as String,
+            basePreset: raw['base_preset'],
+          ),
         };
       }
     }
@@ -168,6 +173,9 @@ class _ParamsPageState extends State<ParamsPage> {
       moss['template'] = _generatedTemplate(moss);
       return moss;
     });
+    for (final name in _basePresets) {
+      _presets[name]!['base_preset'] = name;
+    }
     final selected = settings['asr_preset'];
     _selectedPreset = selected is String && _presets.containsKey(selected)
         ? selected
@@ -470,10 +478,12 @@ class _ParamsPageState extends State<ParamsPage> {
       await _runAction(() async {
         await _savePreset(auto: true);
         if (!mounted) return;
+        final modelSettings = await _modelForPreset(name);
+        if (!mounted) return;
         final previous = _draftValues();
         _applyDraft(_presets[name]!);
         try {
-          await _persistPreset(name);
+          await _persistPreset(name, modelSettings: modelSettings);
         } catch (_) {
           _applyDraft(previous);
           rethrow;
@@ -489,6 +499,35 @@ class _ParamsPageState extends State<ParamsPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<Map<String, String>> _modelForPreset(String name) async {
+    final family = asrPresetFamily(
+      name,
+      basePreset: _presets[name]?['base_preset'],
+    );
+    if (family == null) return const {};
+    try {
+      await widget.app.refreshTools();
+    } catch (_) {
+      return const {};
+    }
+    final tools = widget.app.tools['asr'];
+    if (tools is! Map || tools['models'] is! List) return const {};
+    final asr = widget.app.settings['asr'] as Map?;
+    final selected = selectAsrPresetModel(
+      family: family,
+      models: (tools['models'] as List).whereType<String>(),
+      currentModel: '${asr?['model'] ?? ''}',
+    );
+    if (selected == null) return const {};
+    final backends = tools['backends'];
+    if (backends is List &&
+        backends.isNotEmpty &&
+        !backends.contains(selected.backend)) {
+      return const {};
+    }
+    return {'model': selected.model, 'backend': selected.backend};
   }
 
   Map<String, dynamic> _asrValues() => <String, dynamic>{
@@ -541,15 +580,29 @@ class _ParamsPageState extends State<ParamsPage> {
     'flash_attn': flashAttn,
   };
 
-  Future<void> _persistPreset(String name) async {
+  Future<void> _persistPreset(
+    String name, {
+    Map<String, String> modelSettings = const {},
+  }) async {
     final draft = _draftValues();
     final asrValues = _asrValues();
+    final family = asrPresetFamily(
+      name,
+      basePreset:
+          _presets[name]?['base_preset'] ??
+          _presets[_selectedPreset]?['base_preset'],
+    );
     final presets = {
       ..._presets,
-      if (!_basePresets.contains(name)) name: draft,
+      if (!_basePresets.contains(name))
+        name: {...draft, 'base_preset': ?family},
     };
     await widget.app.updateSettings((next) {
-      next['asr'] = {...(next['asr'] as Map? ?? {}), ...asrValues};
+      next['asr'] = {
+        ...(next['asr'] as Map? ?? {}),
+        ...asrValues,
+        ...modelSettings,
+      };
       next['asr_preset'] = name;
       next['asr_presets'] = presets;
     });

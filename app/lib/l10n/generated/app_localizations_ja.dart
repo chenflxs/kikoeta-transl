@@ -1102,4 +1102,97 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get llamaReady => '準備完了';
+
+  @override
+  String get crispCheckUpdate => '更新を確認';
+
+  @override
+  String get crispQuickUpdate => 'クイック更新';
+
+  @override
+  String get crispDownload => 'ダウンロード';
+
+  @override
+  String get crispReleaseTitle => 'CrispASR リリース';
+
+  @override
+  String crispVersions(Object current, Object latest) {
+    return '現在：$current · 最新：$latest';
+  }
+
+  @override
+  String get crispInstalled => 'CrispASR を更新しました';
+
+  @override
+  String get crispRecommended => '推奨';
+
+  @override
+  String get crispAlreadyLatest => '最新です。再インストールやバックエンドの変更が可能です。';
+
+  @override
+  String get crispNoPackage => 'このシステム構成に対応する完全なパッケージはありません。';
+
+  @override
+  String get crispPreserveModels => '実行環境のみ更新し、ローカルモデルは保持します。';
+
+  @override
+  String get crispDownloading => 'ダウンロード中';
+
+  @override
+  String get crispExtracting => '展開・検証中';
+
+  @override
+  String get crispInstalling => 'インストール中';
+
+  @override
+  String get crispCancelling => 'キャンセル中';
+
+  @override
+  String get crispInstall => 'ダウンロードしてインストール';
+
+  @override
+  String get crispCpuHint => 'CPU：専用 GPU は不要です。x86 版は AVX2 が必要で、通常 GPU より低速です。';
+
+  @override
+  String get crispLegacyHint => '旧 CPU：AVX2 非対応のプロセッサに対応しますが、速度は低下します。';
+
+  @override
+  String get crispAvx512Hint => 'AVX-512：AVX-512 対応 CPU 向け。古い CPU では動作しません。';
+
+  @override
+  String get crispCudaHint =>
+      'CUDA 12.8：NVIDIA GPU 向けの通常の第一候補。対応ドライバーが必要で、ランタイムを含みます。';
+
+  @override
+  String get crispCuda126Hint =>
+      'CUDA 12.6：古いドライバーの NVIDIA GPU 向け。RTX 50 シリーズ非対応。ランタイムを含みます。';
+
+  @override
+  String get crispCuda13Hint =>
+      'CUDA 13：Turing 以降の NVIDIA GPU と新しいドライバー向け。ランタイムを含みますが、CUDA 12 より高速とは限りません。';
+
+  @override
+  String get crispVulkanHint =>
+      'Vulkan：AMD、Intel、NVIDIA に対応し、容量が小さめです。速度と互換性はモデルとドライバー次第です。Linux では Vulkan が起動に必要です。';
+
+  @override
+  String get crispMetalHint => 'Metal：Apple シリコンの GPU を使用します。CUDA は不要です。';
+
+  @override
+  String get crispHipHint =>
+      'ROCm：AMD GPU 向け。ROCm 6 または ROCm 7 に合うパッケージを選択してください。';
+
+  @override
+  String get crispCudaMissing =>
+      'NVIDIA GPU を検出しましたが、利用可能な CUDA は検出できませんでした。ドライバーを確認し、対応する CUDA をダウンロードしてください。';
+
+  @override
+  String get crispDownloadCuda => 'CUDA をダウンロード';
+
+  @override
+  String get crispChooseCuda => 'CUDA の選び方';
+
+  @override
+  String get crispChooseCudaHelp =>
+      'GPU の型番と OS のバージョンを AI に伝え、適切な CUDA バージョンを推薦してもらってください。完全版 CUDA パッケージにはランタイムが含まれるため、通常ツールキットの別途導入は不要です。';
 }

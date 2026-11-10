@@ -51,7 +51,7 @@ class _ParamsPageState extends State<ParamsPage> {
     template.addListener(_onTemplateChanged);
     _loadFlags(asr);
     if (template.text.isEmpty) _setGeneratedTemplate();
-    _loadPresets(widget.app.settings, _draftValues());
+    _applyDraft(_loadPresets(widget.app.settings, _draftValues()));
     _savedDraft = _draft();
     _settingsSynced = widget.app.settings.isNotEmpty;
     _unregisterPageSaver = widget.app.registerPageSaver(
@@ -140,7 +140,10 @@ class _ParamsPageState extends State<ParamsPage> {
     return values;
   }
 
-  void _loadPresets(Map settings, Map<String, dynamic> current) {
+  Map<String, dynamic> _loadPresets(
+    Map settings,
+    Map<String, dynamic> current,
+  ) {
     _presets.clear();
     final stored = settings['asr_presets'];
     final defaults = _loadedValues({});
@@ -163,16 +166,25 @@ class _ParamsPageState extends State<ParamsPage> {
     // Capture existing parameters once so upgrading does not discard tuning.
     _presetsNeedSave = !_basePresets.every(_presets.containsKey);
     _presets.putIfAbsent('qwen3', () => Map.of(current));
-    _presets.putIfAbsent('moss', () {
-      final moss = {
-        ..._presets['qwen3']!,
-        'force_aligner': false,
-        'vad_max_speech': '30',
-        'max_new_tokens': '2048',
-      };
-      moss['template'] = _generatedTemplate(moss);
-      return moss;
-    });
+    // Refresh the built-in preset on upgrade; named custom presets retain tuning.
+    // CrispASR 0.8.35 moss-diarize uses greedy decoding without frequency penalty.
+    final moss = {
+      ...?_presets['moss'] ?? _presets['qwen3'],
+      'enable_vad': true,
+      'force_aligner': false,
+      'vad_model': 'firered',
+      'vad_threshold': '0.65',
+      'vad_max_speech': '30',
+      'vad_min_silence': '300',
+      'max_new_tokens': '512',
+      'frequency_penalty': '0.0',
+      'temperature': '0.0',
+      'beam_size': 'greedy',
+      'base_preset': 'moss',
+    };
+    moss['template'] = _generatedTemplate(moss);
+    _presetsNeedSave |= jsonEncode(_presets['moss']) != jsonEncode(moss);
+    _presets['moss'] = moss;
     for (final name in _basePresets) {
       _presets[name]!['base_preset'] = name;
     }
@@ -180,6 +192,7 @@ class _ParamsPageState extends State<ParamsPage> {
     _selectedPreset = selected is String && _presets.containsKey(selected)
         ? selected
         : 'qwen3';
+    return _selectedPreset == 'moss' ? Map.of(moss) : current;
   }
 
   void _applyDraft(Map<String, dynamic> values) {
@@ -207,8 +220,7 @@ class _ParamsPageState extends State<ParamsPage> {
     _settingsSynced = true;
     final asr = (widget.app.settings['asr'] as Map?) ?? {};
     final regenerate = !_templateEdited && _draft() != _savedDraft;
-    final loaded = _loadedValues(asr);
-    _loadPresets(widget.app.settings, loaded);
+    final loaded = _loadPresets(widget.app.settings, _loadedValues(asr));
     final merged = mergeLoadedSettingsDraft(
       _savedDraft,
       _draftValues(),

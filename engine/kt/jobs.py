@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,6 +114,13 @@ class JobManager:
                 self._jobs[job.job_id] = job
             except (KeyError, TypeError, ValueError):
                 continue
+
+    @contextmanager
+    def tool_update_guard(self):
+        """Keep new/resumed jobs out while a tool's runtime files are replaced."""
+        with self._lock:
+            self._ensure_available()
+            yield
 
     def create(self, request: JobRequest, *, source: str = "desktop", resume_existing: bool = True) -> Job:
         files = [path for path in request.files if str(path).strip()]

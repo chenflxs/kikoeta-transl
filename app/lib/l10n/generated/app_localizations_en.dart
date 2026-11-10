@@ -1118,4 +1118,104 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get llamaReady => 'Ready';
+
+  @override
+  String get crispCheckUpdate => 'Check updates';
+
+  @override
+  String get crispQuickUpdate => 'Quick update';
+
+  @override
+  String get crispDownload => 'Download';
+
+  @override
+  String get crispReleaseTitle => 'CrispASR releases';
+
+  @override
+  String crispVersions(Object current, Object latest) {
+    return 'Current: $current · Latest: $latest';
+  }
+
+  @override
+  String get crispInstalled => 'CrispASR updated';
+
+  @override
+  String get crispRecommended => 'Recommended';
+
+  @override
+  String get crispAlreadyLatest =>
+      'Already up to date. You can reinstall or switch backends.';
+
+  @override
+  String get crispNoPackage =>
+      'This release has no complete package for this system architecture.';
+
+  @override
+  String get crispPreserveModels =>
+      'Updates the runtime only; local models are preserved.';
+
+  @override
+  String get crispDownloading => 'Downloading';
+
+  @override
+  String get crispExtracting => 'Extracting and verifying';
+
+  @override
+  String get crispInstalling => 'Installing';
+
+  @override
+  String get crispCancelling => 'Cancelling';
+
+  @override
+  String get crispInstall => 'Download and install';
+
+  @override
+  String get crispCpuHint =>
+      'CPU: no dedicated GPU required; x86 builds need AVX2. Usually slower than a GPU.';
+
+  @override
+  String get crispLegacyHint =>
+      'Legacy CPU: supports processors without AVX2, with lower performance.';
+
+  @override
+  String get crispAvx512Hint =>
+      'AVX-512: for CPUs supporting AVX-512; incompatible with older processors.';
+
+  @override
+  String get crispCudaHint =>
+      'CUDA 12.8: optimized for NVIDIA GPUs, usually the first choice. Compatible driver required; runtime included.';
+
+  @override
+  String get crispCuda126Hint =>
+      'CUDA 12.6: for NVIDIA GPUs with older drivers. No RTX 50 series support; runtime included.';
+
+  @override
+  String get crispCuda13Hint =>
+      'CUDA 13: for Turing or newer NVIDIA GPUs and recent drivers. Runtime included; not necessarily faster than CUDA 12.';
+
+  @override
+  String get crispVulkanHint =>
+      'Vulkan: covers AMD, Intel and NVIDIA GPUs, with a smaller download. Speed and compatibility depend on the model and driver; Linux requires Vulkan to start.';
+
+  @override
+  String get crispMetalHint =>
+      'Metal: GPU acceleration on Apple silicon, without CUDA.';
+
+  @override
+  String get crispHipHint =>
+      'ROCm: for AMD GPUs. Select the package matching ROCm 6 or ROCm 7.';
+
+  @override
+  String get crispCudaMissing =>
+      'NVIDIA GPU detected, but usable CUDA was not detected. Check the driver and download a compatible CUDA version.';
+
+  @override
+  String get crispDownloadCuda => 'Download CUDA';
+
+  @override
+  String get crispChooseCuda => 'How to choose CUDA';
+
+  @override
+  String get crispChooseCudaHelp =>
+      'Send your GPU model and operating system version to an AI and ask it to recommend a compatible CUDA version. Complete CUDA packages include the runtime, so a separate toolkit is usually unnecessary.';
 }

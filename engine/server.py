@@ -21,6 +21,7 @@ from kt.kikoeta_cache import cached_file, list_cached_results
 from kt.lls_sync import sync_cached_lyric
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
+from kt.crispasr_update import CrispAsrUpdater, local_status as crispasr_status
 from kt.models import AppSettings, JobRequest, StageFlags
 from kt.recent import (
     delete_all_recent_jobs,
@@ -36,6 +37,7 @@ from kt.paths import WORK_DIR
 
 
 MANAGER = JobManager()
+CRISPASR_UPDATER = CrispAsrUpdater(MANAGER.tool_update_guard)
 HOST = "127.0.0.1"
 PORT = 18765
 PUBLIC_PORT = 2370
@@ -92,6 +94,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/settings":
             self._json(load_settings().to_dict())
+            return
+        if path in {"/api/crispasr", "/api/crispasr/releases", "/api/crispasr/update"}:
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._error(403, "CrispASR management is only available from localhost")
+                return
+            try:
+                if path.endswith("/releases"):
+                    payload = CRISPASR_UPDATER.releases(load_settings())
+                elif path.endswith("/update"):
+                    payload = CRISPASR_UPDATER.status()
+                else:
+                    payload = crispasr_status(load_settings())
+                self._json(payload)
+            except Exception as exc:
+                self._error(400, str(exc))
             return
         if path == "/api/lls/cache":
             self._json({"entries": list_cached_results()})
@@ -160,6 +177,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._error(502, f"推送失败：{exc}")
             else:
                 self._json({"uploaded": 1})
+            return
+        if path in {"/api/crispasr/update", "/api/crispasr/cancel"}:
+            if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                self._error(403, "CrispASR management is only available from localhost")
+                return
+            try:
+                if path.endswith("/cancel"):
+                    payload = CRISPASR_UPDATER.cancel()
+                else:
+                    body = self._read_json()
+                    with MANAGER.tool_update_guard():
+                        pass
+                    payload = CRISPASR_UPDATER.start(load_settings(), int(body["asset_id"]))
+                self._json(payload)
+            except RuntimeError as exc:
+                self._error(409, str(exc))
+            except Exception as exc:
+                self._error(400, str(exc))
             return
         if path == "/api/shutdown":
             # The local engine is owned by the desktop client.  Never expose

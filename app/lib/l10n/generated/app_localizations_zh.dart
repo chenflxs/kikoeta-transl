@@ -1094,11 +1094,193 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get llamaReady => '已就绪';
+
+  @override
+  String get crispCheckUpdate => '检测更新';
+
+  @override
+  String get crispQuickUpdate => '快速更新';
+
+  @override
+  String get crispDownload => '下载';
+
+  @override
+  String get crispReleaseTitle => 'CrispASR 发行版本';
+
+  @override
+  String crispVersions(Object current, Object latest) {
+    return '当前：$current · 最新：$latest';
+  }
+
+  @override
+  String get crispInstalled => 'CrispASR 已更新';
+
+  @override
+  String get crispRecommended => '推荐';
+
+  @override
+  String get crispAlreadyLatest => '当前已是最新版本，可重装或更换运行后端。';
+
+  @override
+  String get crispNoPackage => '此发行版没有适合当前系统架构的完整安装包。';
+
+  @override
+  String get crispPreserveModels => '仅更新程序及运行库，保留本地模型。';
+
+  @override
+  String get crispDownloading => '正在下载';
+
+  @override
+  String get crispExtracting => '正在解压与验证';
+
+  @override
+  String get crispInstalling => '正在安装';
+
+  @override
+  String get crispCancelling => '正在取消';
+
+  @override
+  String get crispInstall => '下载并安装';
+
+  @override
+  String get crispCpuHint => 'CPU：无需独立显卡，兼容性好；x86 版本需要 AVX2，通常比 GPU 慢。';
+
+  @override
+  String get crispLegacyHint => '旧 CPU：支持缺少 AVX2 的处理器，速度较慢。';
+
+  @override
+  String get crispAvx512Hint => 'AVX-512：适合支持 AVX-512 的 CPU，不兼容较旧处理器。';
+
+  @override
+  String get crispCudaHint => 'CUDA 12.8：NVIDIA 专用加速，通常优先选择；需兼容驱动，已含运行库。';
+
+  @override
+  String get crispCuda126Hint =>
+      'CUDA 12.6：适合驱动较旧的 NVIDIA 显卡，不支持 RTX 50 系列；已含运行库。';
+
+  @override
+  String get crispCuda13Hint =>
+      'CUDA 13：适合 Turing 及更新 NVIDIA 显卡和新驱动；已含运行库，不保证比 CUDA 12 更快。';
+
+  @override
+  String get crispVulkanHint =>
+      'Vulkan：覆盖 AMD、Intel 和 NVIDIA 显卡，包较小；速度及兼容性取决于模型和驱动，Linux 缺少 Vulkan 时无法启动。';
+
+  @override
+  String get crispMetalHint => 'Metal：使用 Apple 芯片 GPU 加速，无需 CUDA。';
+
+  @override
+  String get crispHipHint => 'ROCm：用于 AMD GPU，ROCm 6 与 ROCm 7 必须选择对应的包。';
+
+  @override
+  String get crispCudaMissing =>
+      '检测到 NVIDIA 显卡，但未检测到可用 CUDA。建议检查驱动，并下载适配版本的 CUDA。';
+
+  @override
+  String get crispDownloadCuda => '下载 CUDA';
+
+  @override
+  String get crispChooseCuda => '如何选择 CUDA';
+
+  @override
+  String get crispChooseCudaHelp =>
+      '将显卡型号和系统版本发送给 AI，让 AI 帮你推荐合适的 CUDA 版本。完整 CUDA 发行包已包含运行库，通常无需另装工具包。';
 }
 
 /// The translations for Chinese, as used in China (`zh_CN`).
 class AppLocalizationsZhCn extends AppLocalizationsZh {
   AppLocalizationsZhCn() : super('zh_CN');
+
+  @override
+  String get crispCheckUpdate => '检测更新';
+
+  @override
+  String get crispQuickUpdate => '快速更新';
+
+  @override
+  String get crispDownload => '下载';
+
+  @override
+  String get crispReleaseTitle => 'CrispASR 发行版本';
+
+  @override
+  String crispVersions(Object current, Object latest) {
+    return '当前：$current · 最新：$latest';
+  }
+
+  @override
+  String get crispInstalled => 'CrispASR 已更新';
+
+  @override
+  String get crispRecommended => '推荐';
+
+  @override
+  String get crispAlreadyLatest => '当前已是最新版本，可重装或更换运行后端。';
+
+  @override
+  String get crispNoPackage => '此发行版没有适合当前系统架构的完整安装包。';
+
+  @override
+  String get crispPreserveModels => '仅更新程序及运行库，保留本地模型。';
+
+  @override
+  String get crispDownloading => '正在下载';
+
+  @override
+  String get crispExtracting => '正在解压与验证';
+
+  @override
+  String get crispInstalling => '正在安装';
+
+  @override
+  String get crispCancelling => '正在取消';
+
+  @override
+  String get crispInstall => '下载并安装';
+
+  @override
+  String get crispCpuHint => 'CPU：无需独立显卡，兼容性好；x86 版本需要 AVX2，通常比 GPU 慢。';
+
+  @override
+  String get crispLegacyHint => '旧 CPU：支持缺少 AVX2 的处理器，速度较慢。';
+
+  @override
+  String get crispAvx512Hint => 'AVX-512：适合支持 AVX-512 的 CPU，不兼容较旧处理器。';
+
+  @override
+  String get crispCudaHint => 'CUDA 12.8：NVIDIA 专用加速，通常优先选择；需兼容驱动，已含运行库。';
+
+  @override
+  String get crispCuda126Hint =>
+      'CUDA 12.6：适合驱动较旧的 NVIDIA 显卡，不支持 RTX 50 系列；已含运行库。';
+
+  @override
+  String get crispCuda13Hint =>
+      'CUDA 13：适合 Turing 及更新 NVIDIA 显卡和新驱动；已含运行库，不保证比 CUDA 12 更快。';
+
+  @override
+  String get crispVulkanHint =>
+      'Vulkan：覆盖 AMD、Intel 和 NVIDIA 显卡，包较小；速度及兼容性取决于模型和驱动，Linux 缺少 Vulkan 时无法启动。';
+
+  @override
+  String get crispMetalHint => 'Metal：使用 Apple 芯片 GPU 加速，无需 CUDA。';
+
+  @override
+  String get crispHipHint => 'ROCm：用于 AMD GPU，ROCm 6 与 ROCm 7 必须选择对应的包。';
+
+  @override
+  String get crispCudaMissing =>
+      '检测到 NVIDIA 显卡，但未检测到可用 CUDA。建议检查驱动，并下载适配版本的 CUDA。';
+
+  @override
+  String get crispDownloadCuda => '下载 CUDA';
+
+  @override
+  String get crispChooseCuda => '如何选择 CUDA';
+
+  @override
+  String get crispChooseCudaHelp =>
+      '将显卡型号和系统版本发送给 AI，让 AI 帮你推荐合适的 CUDA 版本。完整 CUDA 发行包已包含运行库，通常无需另装工具包。';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).
@@ -2191,4 +2373,95 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get llamaReady => '已就緒';
+
+  @override
+  String get crispCheckUpdate => '檢查更新';
+
+  @override
+  String get crispQuickUpdate => '快速更新';
+
+  @override
+  String get crispDownload => '下載';
+
+  @override
+  String get crispReleaseTitle => 'CrispASR 發行版本';
+
+  @override
+  String crispVersions(Object current, Object latest) {
+    return '目前：$current · 最新：$latest';
+  }
+
+  @override
+  String get crispInstalled => 'CrispASR 已更新';
+
+  @override
+  String get crispRecommended => '推薦';
+
+  @override
+  String get crispAlreadyLatest => '目前已是最新版本，可重新安裝或更換執行後端。';
+
+  @override
+  String get crispNoPackage => '此發行版沒有適合目前系統架構的完整安裝套件。';
+
+  @override
+  String get crispPreserveModels => '僅更新程式及執行階段，保留本機模型。';
+
+  @override
+  String get crispDownloading => '正在下載';
+
+  @override
+  String get crispExtracting => '正在解壓縮與驗證';
+
+  @override
+  String get crispInstalling => '正在安裝';
+
+  @override
+  String get crispCancelling => '正在取消';
+
+  @override
+  String get crispInstall => '下載並安裝';
+
+  @override
+  String get crispCpuHint => 'CPU：不需要獨立顯示卡，相容性佳；x86 版本需要 AVX2，通常比 GPU 慢。';
+
+  @override
+  String get crispLegacyHint => '舊 CPU：支援缺少 AVX2 的處理器，速度較慢。';
+
+  @override
+  String get crispAvx512Hint => 'AVX-512：適合支援 AVX-512 的 CPU，不相容較舊處理器。';
+
+  @override
+  String get crispCudaHint => 'CUDA 12.8：NVIDIA 專用加速，通常優先選擇；需要相容驅動程式，已含執行階段。';
+
+  @override
+  String get crispCuda126Hint =>
+      'CUDA 12.6：適合驅動程式較舊的 NVIDIA 顯示卡，不支援 RTX 50 系列；已含執行階段。';
+
+  @override
+  String get crispCuda13Hint =>
+      'CUDA 13：適合 Turing 及更新 NVIDIA 顯示卡和新驅動程式；已含執行階段，不保證比 CUDA 12 更快。';
+
+  @override
+  String get crispVulkanHint =>
+      'Vulkan：涵蓋 AMD、Intel 和 NVIDIA 顯示卡，套件較小；速度及相容性取決於模型和驅動程式，Linux 缺少 Vulkan 時無法啟動。';
+
+  @override
+  String get crispMetalHint => 'Metal：使用 Apple 晶片 GPU 加速，不需要 CUDA。';
+
+  @override
+  String get crispHipHint => 'ROCm：用於 AMD GPU，ROCm 6 與 ROCm 7 必須選擇對應套件。';
+
+  @override
+  String get crispCudaMissing =>
+      '偵測到 NVIDIA 顯示卡，但未偵測到可用 CUDA。建議檢查驅動程式，並下載適合的 CUDA 版本。';
+
+  @override
+  String get crispDownloadCuda => '下載 CUDA';
+
+  @override
+  String get crispChooseCuda => '如何選擇 CUDA';
+
+  @override
+  String get crispChooseCudaHelp =>
+      '將顯示卡型號和系統版本傳送給 AI，讓 AI 幫你推薦適合的 CUDA 版本。完整 CUDA 發行套件已包含執行階段，通常不需要另裝工具包。';
 }

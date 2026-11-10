@@ -12,6 +12,7 @@ import '../l10n/app_language.dart';
 import '../services/theme_reveal.dart';
 import '../settings_draft.dart';
 import '../widgets.dart';
+import '../widgets/crispasr_update.dart';
 
 class SettingsPage extends StatefulWidget {
   final AppState app;
@@ -395,21 +396,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               showDivider: true,
             ),
-            KtRow(
-              icon: Icons.mic_none,
-              title: 'CrispASR',
-              sub:
-                  ((tools['asr'] as Map?)?['executable'] as String?)
-                          ?.isNotEmpty ==
-                      true
-                  ? (tools['asr'] as Map)['executable'].toString()
-                  : ((tools['asr'] as Map?)?['dir']?.toString() ??
-                        context.l10n.executableNotFound),
-              trailing: TextButton(
-                onPressed: _refreshTools,
-                child: Text(context.l10n.refresh),
-              ),
-              showDivider: false,
+            CrispAsrUpdateRow(
+              app: widget.app,
+              prepare: () => _save(auto: true),
             ),
           ],
         ),

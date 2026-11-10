@@ -255,6 +255,43 @@ class EngineClient {
 
   Future<Map<String, dynamic>> settings() async => _get('/api/settings');
 
+  Future<Map<String, dynamic>> crispAsrStatus() =>
+      _crispAsrRequest('/api/crispasr');
+
+  Future<Map<String, dynamic>> crispAsrReleases() =>
+      _crispAsrRequest('/api/crispasr/releases');
+
+  Future<Map<String, dynamic>> crispAsrUpdateStatus() =>
+      _crispAsrRequest('/api/crispasr/update');
+
+  Future<Map<String, dynamic>> installCrispAsr(int assetId) =>
+      _crispAsrRequest('/api/crispasr/update', body: {'asset_id': assetId});
+
+  Future<Map<String, dynamic>> cancelCrispAsrUpdate() =>
+      _crispAsrRequest('/api/crispasr/cancel', body: const {});
+
+  Future<Map<String, dynamic>> _crispAsrRequest(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final response =
+        await (body == null
+                ? http.get(_uri(path))
+                : http.post(
+                    _uri(path),
+                    headers: {'content-type': 'application/json'},
+                    body: jsonEncode(body),
+                  ))
+            .timeout(const Duration(seconds: 90));
+    final payload = _decode(response);
+    if (response.statusCode >= 400) {
+      throw StateError(
+        payload['error']?.toString() ?? 'HTTP ${response.statusCode}',
+      );
+    }
+    return payload;
+  }
+
   Future<Map<String, dynamic>> saveSettings(Map<String, dynamic> body) async {
     final res = await http
         .put(

@@ -684,5 +684,43 @@
   "uiLanguage": "界面语言",
   "llamaStopped": "已停止",
   "llamaStarting": "正在启动",
-  "llamaReady": "已就绪"
+  "llamaReady": "已就绪",
+  "crispCheckUpdate": "检测更新",
+  "crispQuickUpdate": "快速更新",
+  "crispDownload": "下载",
+  "crispReleaseTitle": "CrispASR 发行版本",
+  "crispVersions": "当前：{current} · 最新：{latest}",
+  "crispInstalled": "CrispASR 已更新",
+  "crispRecommended": "推荐",
+  "crispAlreadyLatest": "当前已是最新版本，可重装或更换运行后端。",
+  "crispNoPackage": "此发行版没有适合当前系统架构的完整安装包。",
+  "crispPreserveModels": "仅更新程序及运行库，保留本地模型。",
+  "crispDownloading": "正在下载",
+  "crispExtracting": "正在解压与验证",
+  "crispInstalling": "正在安装",
+  "crispCancelling": "正在取消",
+  "crispInstall": "下载并安装",
+  "crispCpuHint": "CPU：无需独立显卡，兼容性好；x86 版本需要 AVX2，通常比 GPU 慢。",
+  "crispLegacyHint": "旧 CPU：支持缺少 AVX2 的处理器，速度较慢。",
+  "crispAvx512Hint": "AVX-512：适合支持 AVX-512 的 CPU，不兼容较旧处理器。",
+  "crispCudaHint": "CUDA 12.8：NVIDIA 专用加速，通常优先选择；需兼容驱动，已含运行库。",
+  "crispCuda126Hint": "CUDA 12.6：适合驱动较旧的 NVIDIA 显卡，不支持 RTX 50 系列；已含运行库。",
+  "crispCuda13Hint": "CUDA 13：适合 Turing 及更新 NVIDIA 显卡和新驱动；已含运行库，不保证比 CUDA 12 更快。",
+  "crispVulkanHint": "Vulkan：覆盖 AMD、Intel 和 NVIDIA 显卡，包较小；速度及兼容性取决于模型和驱动，Linux 缺少 Vulkan 时无法启动。",
+  "crispMetalHint": "Metal：使用 Apple 芯片 GPU 加速，无需 CUDA。",
+  "crispHipHint": "ROCm：用于 AMD GPU，ROCm 6 与 ROCm 7 必须选择对应的包。",
+  "@crispVersions": {
+    "placeholders": {
+      "current": {
+        "type": "Object"
+      },
+      "latest": {
+        "type": "Object"
+      }
+    }
+  },
+  "crispCudaMissing": "检测到 NVIDIA 显卡，但未检测到可用 CUDA。建议检查驱动，并下载适配版本的 CUDA。",
+  "crispDownloadCuda": "下载 CUDA",
+  "crispChooseCuda": "如何选择 CUDA",
+  "crispChooseCudaHelp": "将显卡型号和系统版本发送给 AI，让 AI 帮你推荐合适的 CUDA 版本。完整 CUDA 发行包已包含运行库，通常无需另装工具包。"
 }

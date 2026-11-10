@@ -1126,4 +1126,104 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get llamaReady => 'Готово';
+
+  @override
+  String get crispCheckUpdate => 'Проверить обновления';
+
+  @override
+  String get crispQuickUpdate => 'Быстрое обновление';
+
+  @override
+  String get crispDownload => 'Скачать';
+
+  @override
+  String get crispReleaseTitle => 'Выпуски CrispASR';
+
+  @override
+  String crispVersions(Object current, Object latest) {
+    return 'Установлено: $current · Новое: $latest';
+  }
+
+  @override
+  String get crispInstalled => 'CrispASR обновлён';
+
+  @override
+  String get crispRecommended => 'Рекомендуется';
+
+  @override
+  String get crispAlreadyLatest =>
+      'Установлена последняя версия. Можно переустановить или сменить бэкенд.';
+
+  @override
+  String get crispNoPackage =>
+      'В этом выпуске нет полного пакета для данной системы и архитектуры.';
+
+  @override
+  String get crispPreserveModels =>
+      'Обновляется только среда выполнения; локальные модели сохраняются.';
+
+  @override
+  String get crispDownloading => 'Загрузка';
+
+  @override
+  String get crispExtracting => 'Распаковка и проверка';
+
+  @override
+  String get crispInstalling => 'Установка';
+
+  @override
+  String get crispCancelling => 'Отмена';
+
+  @override
+  String get crispInstall => 'Скачать и установить';
+
+  @override
+  String get crispCpuHint =>
+      'CPU: дискретная видеокарта не нужна. Сборкам x86 требуется AVX2; обычно медленнее GPU.';
+
+  @override
+  String get crispLegacyHint =>
+      'Старый CPU: поддержка процессоров без AVX2, но с меньшей скоростью.';
+
+  @override
+  String get crispAvx512Hint =>
+      'AVX-512: для процессоров с AVX-512; несовместим со старыми CPU.';
+
+  @override
+  String get crispCudaHint =>
+      'CUDA 12.8: ускорение для NVIDIA, обычно предпочтительный вариант. Нужен совместимый драйвер; библиотеки включены.';
+
+  @override
+  String get crispCuda126Hint =>
+      'CUDA 12.6: для NVIDIA со старыми драйверами. RTX 50 не поддерживается; библиотеки включены.';
+
+  @override
+  String get crispCuda13Hint =>
+      'CUDA 13: для NVIDIA Turing и новее с новым драйвером. Библиотеки включены; не обязательно быстрее CUDA 12.';
+
+  @override
+  String get crispVulkanHint =>
+      'Vulkan: поддерживает AMD, Intel и NVIDIA, пакет меньше. Скорость и совместимость зависят от модели и драйвера; в Linux Vulkan нужен для запуска.';
+
+  @override
+  String get crispMetalHint =>
+      'Metal: ускорение на GPU Apple silicon без CUDA.';
+
+  @override
+  String get crispHipHint =>
+      'ROCm: для AMD GPU. Выберите пакет под установленную ROCm 6 или ROCm 7.';
+
+  @override
+  String get crispCudaMissing =>
+      'Обнаружен GPU NVIDIA, но доступная CUDA не найдена. Проверьте драйвер и загрузите совместимую версию CUDA.';
+
+  @override
+  String get crispDownloadCuda => 'Скачать CUDA';
+
+  @override
+  String get crispChooseCuda => 'Как выбрать CUDA';
+
+  @override
+  String get crispChooseCudaHelp =>
+      'Отправьте ИИ модель видеокарты и версию операционной системы и попросите подобрать совместимую CUDA. Полные пакеты CUDA содержат библиотеки среды выполнения, поэтому отдельный инструментарий обычно не нужен.';
 }

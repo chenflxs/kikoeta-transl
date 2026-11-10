@@ -2077,6 +2077,174 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已就绪'**
   String get llamaReady;
+
+  /// No description provided for @crispCheckUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测更新'**
+  String get crispCheckUpdate;
+
+  /// No description provided for @crispQuickUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'快速更新'**
+  String get crispQuickUpdate;
+
+  /// No description provided for @crispDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载'**
+  String get crispDownload;
+
+  /// No description provided for @crispReleaseTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'CrispASR 发行版本'**
+  String get crispReleaseTitle;
+
+  /// No description provided for @crispVersions.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前：{current} · 最新：{latest}'**
+  String crispVersions(Object current, Object latest);
+
+  /// No description provided for @crispInstalled.
+  ///
+  /// In zh, this message translates to:
+  /// **'CrispASR 已更新'**
+  String get crispInstalled;
+
+  /// No description provided for @crispRecommended.
+  ///
+  /// In zh, this message translates to:
+  /// **'推荐'**
+  String get crispRecommended;
+
+  /// No description provided for @crispAlreadyLatest.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已是最新版本，可重装或更换运行后端。'**
+  String get crispAlreadyLatest;
+
+  /// No description provided for @crispNoPackage.
+  ///
+  /// In zh, this message translates to:
+  /// **'此发行版没有适合当前系统架构的完整安装包。'**
+  String get crispNoPackage;
+
+  /// No description provided for @crispPreserveModels.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅更新程序及运行库，保留本地模型。'**
+  String get crispPreserveModels;
+
+  /// No description provided for @crispDownloading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在下载'**
+  String get crispDownloading;
+
+  /// No description provided for @crispExtracting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在解压与验证'**
+  String get crispExtracting;
+
+  /// No description provided for @crispInstalling.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在安装'**
+  String get crispInstalling;
+
+  /// No description provided for @crispCancelling.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在取消'**
+  String get crispCancelling;
+
+  /// No description provided for @crispInstall.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载并安装'**
+  String get crispInstall;
+
+  /// No description provided for @crispCpuHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'CPU：无需独立显卡，兼容性好；x86 版本需要 AVX2，通常比 GPU 慢。'**
+  String get crispCpuHint;
+
+  /// No description provided for @crispLegacyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'旧 CPU：支持缺少 AVX2 的处理器，速度较慢。'**
+  String get crispLegacyHint;
+
+  /// No description provided for @crispAvx512Hint.
+  ///
+  /// In zh, this message translates to:
+  /// **'AVX-512：适合支持 AVX-512 的 CPU，不兼容较旧处理器。'**
+  String get crispAvx512Hint;
+
+  /// No description provided for @crispCudaHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'CUDA 12.8：NVIDIA 专用加速，通常优先选择；需兼容驱动，已含运行库。'**
+  String get crispCudaHint;
+
+  /// No description provided for @crispCuda126Hint.
+  ///
+  /// In zh, this message translates to:
+  /// **'CUDA 12.6：适合驱动较旧的 NVIDIA 显卡，不支持 RTX 50 系列；已含运行库。'**
+  String get crispCuda126Hint;
+
+  /// No description provided for @crispCuda13Hint.
+  ///
+  /// In zh, this message translates to:
+  /// **'CUDA 13：适合 Turing 及更新 NVIDIA 显卡和新驱动；已含运行库，不保证比 CUDA 12 更快。'**
+  String get crispCuda13Hint;
+
+  /// No description provided for @crispVulkanHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'Vulkan：覆盖 AMD、Intel 和 NVIDIA 显卡，包较小；速度及兼容性取决于模型和驱动，Linux 缺少 Vulkan 时无法启动。'**
+  String get crispVulkanHint;
+
+  /// No description provided for @crispMetalHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'Metal：使用 Apple 芯片 GPU 加速，无需 CUDA。'**
+  String get crispMetalHint;
+
+  /// No description provided for @crispHipHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'ROCm：用于 AMD GPU，ROCm 6 与 ROCm 7 必须选择对应的包。'**
+  String get crispHipHint;
+
+  /// No description provided for @crispCudaMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测到 NVIDIA 显卡，但未检测到可用 CUDA。建议检查驱动，并下载适配版本的 CUDA。'**
+  String get crispCudaMissing;
+
+  /// No description provided for @crispDownloadCuda.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载 CUDA'**
+  String get crispDownloadCuda;
+
+  /// No description provided for @crispChooseCuda.
+  ///
+  /// In zh, this message translates to:
+  /// **'如何选择 CUDA'**
+  String get crispChooseCuda;
+
+  /// No description provided for @crispChooseCudaHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'将显卡型号和系统版本发送给 AI，让 AI 帮你推荐合适的 CUDA 版本。完整 CUDA 发行包已包含运行库，通常无需另装工具包。'**
+  String get crispChooseCudaHelp;
 }
 
 class _AppLocalizationsDelegate

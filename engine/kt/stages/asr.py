@@ -37,6 +37,47 @@ _SRT_TIMING_RE = re.compile(
     r"^\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*"
     r"(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})"
 )
+_MOSS_SPEAKER_RE = re.compile(r"\[S\d+\]", re.IGNORECASE)
+_MOSS_SPEAKER_PREFIX_RE = re.compile(r"^\s*\(Speaker\s+\d+\)\s*", re.IGNORECASE)
+_MOSS_PARTIAL_SPEAKER_RE = re.compile(r"\[S\d*$", re.IGNORECASE)
+_MOSS_TIME_RE = re.compile(r"\[\d+(?:\.\d*)?\]")
+_MOSS_RAW_PREFIX_RE = re.compile(r"^\s*\[\d+(?:\.\d*)?\]\[S\d+\]", re.IGNORECASE)
+
+
+def _is_moss_command(command: list[str]) -> bool:
+    backend = ""
+    for index, token in enumerate(command):
+        if token == "--backend" and index + 1 < len(command):
+            backend = command[index + 1]
+        elif token.startswith("--backend="):
+            backend = token.partition("=")[2]
+    return backend.lower() == "moss-diarize"
+
+
+def _clean_moss_text(text: str) -> str:
+    """Remove reserved protocol tags, retaining words, vocalizations and timing.
+
+    CrispASR's native parser leaves interior speaker tags in segment text and
+    falls back to raw tagged text when it cannot parse a complete segment.
+    Only the latter has relative timestamp tokens in the subtitle body.
+    """
+    text = _MOSS_SPEAKER_PREFIX_RE.sub("", text)
+    raw = _MOSS_RAW_PREFIX_RE.match(text) is not None
+    text = _MOSS_SPEAKER_RE.sub("", text)
+    text = _MOSS_PARTIAL_SPEAKER_RE.sub("", text)
+    if raw:
+        text = _MOSS_TIME_RE.sub("", text)
+        text = re.sub(r"\[(?:\d+(?:\.\d*)?)?$", "", text)
+    return text.strip()
+
+
+def _clean_moss_cues(cues: list[Cue]) -> list[Cue]:
+    cleaned = []
+    for cue in cues:
+        text = _clean_moss_text(cue.message)
+        if text:
+            cleaned.append(Cue(cue.start, cue.end, text, text))
+    return cleaned
 
 
 def transcribe_wav(
@@ -115,6 +156,8 @@ def transcribe_wav(
                     f"CrispASR 听写结果文件读取失败，已使用实时捕获的 "
                     f"{len(streamed_cues)} 条字幕继续处理: {exc}",
                 )
+        if _is_moss_command(command):
+            file_cues = _clean_moss_cues(file_cues)
         cues = file_cues if len(file_cues) >= len(streamed_cues) else streamed_cues
         if not cues:
             detail = (result.stderr or result.stdout or "").strip()
@@ -205,7 +248,7 @@ def _run_with_heartbeat(
     next_notice = last_output + idle_notice_after
     notice_count = 0
     streams_closed = 0
-    srt_parser = _ProgressiveSrtParser()
+    srt_parser = _ProgressiveSrtParser(moss_output=_is_moss_command(command))
     while True:
         if stop_event is not None and stop_event.is_set():
             terminate_process(process)
@@ -283,7 +326,8 @@ def _run_with_heartbeat(
 class _ProgressiveSrtParser:
     """Turn line-buffered progressive SRT stdout into complete cues."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, moss_output: bool = False) -> None:
+        self._moss_output = moss_output
         self._index: str | None = None
         self._timing: tuple[float, float] | None = None
         self._text: list[str] = []
@@ -333,6 +377,8 @@ class _ProgressiveSrtParser:
     def _take_cue(self) -> Cue | None:
         timing = self._timing
         text = "\n".join(self._text).strip()
+        if self._moss_output:
+            text = _clean_moss_text(text)
         self._timing = None
         self._text = []
         if timing is None or not text:

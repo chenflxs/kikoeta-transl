@@ -71,14 +71,16 @@ def process_file(
             if not cues:
                 raise PipelineError("ASR 没有产出字幕")
             from .stages.asr_cleanup import cleanup_asr_cues
-            cues, asr_cleanup_entries = cleanup_asr_cues(cues)
+            cues, asr_cleanup_entries = cleanup_asr_cues(
+                cues, moss_output=settings.asr.backend == "moss-diarize",
+            )
             if asr_cleanup_entries:
                 capped = sum(entry["action"] == "capped_repeated_symbol_runs" for entry in asr_cleanup_entries)
                 review_only = sum(entry["action"].startswith("review_only") for entry in asr_cleanup_entries)
                 emit(
                     "log",
                     file=path,
-                    message=f"ASR 听写后重复符号处理完成：截断 {capped} 条，保留待复核 {review_only} 条",
+                    message=f"ASR 听写后清理完成：符号截断 {capped} 条，保留待复核 {review_only} 条",
                 )
 
         src_cues = [
@@ -166,7 +168,7 @@ def process_file(
             report_dir.mkdir(parents=True, exist_ok=True)
             report_source = report_dir / Path(outputs[0]).name
             report_path = write_asr_cleanup_report(report_source, asr_cleanup_entries)
-            emit("log", file=path, message=f"ASR 符号噪声处理记录已保存在任务缓存：{report_path}")
+            emit("log", file=path, message=f"ASR 清理与待复核记录已保存在任务缓存：{report_path}")
         if correction_review is not None:
             report_dir = workspace / "reports"
             report_dir.mkdir(parents=True, exist_ok=True)

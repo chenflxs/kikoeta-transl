@@ -1,8 +1,9 @@
-"""Remove only highly repetitive punctuation artifacts from ASR output."""
+"""Cap repeated punctuation and report uncertain Moss repetitions without deleting speech."""
 from __future__ import annotations
 
 import json
 import math
+import re
 import unicodedata
 from pathlib import Path
 
@@ -13,17 +14,19 @@ _MIN_REPEATED_CHARS = 16
 _MIN_REPETITIONS = 6
 _MAX_PATTERN_CHARS = 4
 _MAX_RETAINED_REPETITIONS = 3
+_MOSS_REPEAT_RE = re.compile(r"(.{1,12}?)\1{7,}")
 
 
-def cleanup_asr_cues(cues: list[Cue]) -> tuple[list[Cue], list[dict]]:
+def cleanup_asr_cues(cues: list[Cue], *, moss_output: bool = False) -> tuple[list[Cue], list[dict]]:
     """Cap long repeated punctuation/symbol runs without calling a model.
 
     Changed cue text is what downstream correction and export receive. The
-    report preserves original text; ambiguous punctuation-heavy cues remain
-    intact and are reported for review.
+    report preserves original text; ambiguous punctuation-heavy cues and Moss
+    repetitions remain intact and are reported for review.
     """
     cleaned: list[Cue] = []
     entries: list[dict] = []
+    moss_review = _moss_review_indices(cues) if moss_output else set()
 
     for index, cue in enumerate(cues, start=1):
         original = cue.message
@@ -38,8 +41,37 @@ def cleanup_asr_cues(cues: list[Cue]) -> tuple[list[Cue], list[dict]]:
         cleaned.append(Cue(cue.start, cue.end, original, original))
         if _symbol_count(stripped) >= _MIN_REPEATED_CHARS:
             entries.append(_entry(index, cue, original, original, "review_only"))
+        elif index in moss_review:
+            entries.append(_entry(index, cue, original, original, "review_only_moss_repetition"))
 
     return cleaned, entries
+
+
+def _moss_review_indices(cues: list[Cue]) -> set[int]:
+    """Flag long repeated phrases/cue runs for listening, never remove vocalizations."""
+    review = set()
+    previous = ""
+    run: list[int] = []
+    for index, cue in enumerate(cues, start=1):
+        text = " ".join(cue.message.split())
+        if _MOSS_REPEAT_RE.search(text):
+            review.add(index)
+        normalized = "".join(char for char in text if unicodedata.category(char)[0] not in {"P", "S", "Z"})
+        adjacent = False
+        if run:
+            last = cues[index - 2]
+            adjacent = (-0.05 <= cue.start - last.end <= 0.5 or
+                        (cue.start == last.start and cue.end == last.end))
+        if normalized and len(normalized) <= 8 and normalized == previous and adjacent:
+            run.append(index)
+        else:
+            if len(run) >= 8:
+                review.update(run)
+            run = [index] if normalized and len(normalized) <= 8 else []
+        previous = normalized
+    if len(run) >= 8:
+        review.update(run)
+    return review
 
 
 def write_asr_cleanup_report(subtitle_path: str | Path, entries: list[dict]) -> str:
@@ -47,7 +79,7 @@ def write_asr_cleanup_report(subtitle_path: str | Path, entries: list[dict]) -> 
     payload = {
         "schema_version": 1,
         "mode": "repeated_symbol_cap",
-        "note": "超阈值的标点/符号重复串最多保留前 3 次；review_only 条目保持原文。",
+        "note": "超阈值的标点/符号重复串最多保留前 3 次；Moss 短语或字幕重复仅标记复核，review_only 条目保持原文和时间轴。",
         "rule": {
             "minimum_repeated_symbols": _MIN_REPEATED_CHARS,
             "minimum_repetitions": _MIN_REPETITIONS,

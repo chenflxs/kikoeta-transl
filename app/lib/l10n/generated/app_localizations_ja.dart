@@ -949,7 +949,17 @@ class AppLocalizationsJa extends AppLocalizations {
   String get clearFileList => '一覧をクリア';
 
   @override
-  String get dropFilesHint => '音声・動画・字幕をドロップ、またはクリックして選択';
+  String get dropFilesHint => '音声・動画・字幕・フォルダーをドロップ、またはクリックしてファイルを選択';
+
+  @override
+  String get dropFilesScanning => 'ドロップしたファイルを確認中…';
+
+  @override
+  String get dropFilesNoMatches => 'ドロップしたフォルダーに対応する音声・動画・字幕がありません';
+
+  @override
+  String get dropFilesReadFailed =>
+      '読み込めない項目があります。ファイルやフォルダーにアクセスできるか確認してください。';
 
   @override
   String selectedFiles(Object arg1) {

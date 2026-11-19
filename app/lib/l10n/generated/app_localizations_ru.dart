@@ -973,7 +973,18 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get dropFilesHint =>
-      'Перетащите аудио, видео или субтитры либо нажмите для выбора';
+      'Перетащите медиафайлы, субтитры или папки либо нажмите, чтобы выбрать файлы';
+
+  @override
+  String get dropFilesScanning => 'Поиск файлов…';
+
+  @override
+  String get dropFilesNoMatches =>
+      'В перетащенных папках нет поддерживаемых медиафайлов или субтитров';
+
+  @override
+  String get dropFilesReadFailed =>
+      'Не удалось прочитать некоторые элементы. Убедитесь, что файлы и папки доступны.';
 
   @override
   String selectedFiles(Object arg1) {

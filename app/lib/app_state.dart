@@ -119,10 +119,10 @@ class AppState extends ChangeNotifier {
   }
 
   void addFiles(Iterable<String> paths) {
-    for (final path in paths) {
-      if (path.isNotEmpty && !files.contains(path)) files.add(path);
-    }
-    notifyListeners();
+    final existing = files.toSet();
+    final previousCount = files.length;
+    files.addAll(paths.where((path) => path.isNotEmpty && existing.add(path)));
+    if (files.length != previousCount) notifyListeners();
   }
 
   void removeFile(String path) {

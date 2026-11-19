@@ -1799,8 +1799,26 @@ abstract class AppLocalizations {
   /// No description provided for @dropFilesHint.
   ///
   /// In zh, this message translates to:
-  /// **'拖入音视频或字幕，或点击选择'**
+  /// **'拖入音视频、字幕或文件夹，也可点击选取文件'**
   String get dropFilesHint;
+
+  /// No description provided for @dropFilesScanning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在扫描拖入的文件…'**
+  String get dropFilesScanning;
+
+  /// No description provided for @dropFilesNoMatches.
+  ///
+  /// In zh, this message translates to:
+  /// **'拖入的文件夹里没有支持的音视频或字幕'**
+  String get dropFilesNoMatches;
+
+  /// No description provided for @dropFilesReadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'有拖入项无法读取，请确认文件或文件夹可访问'**
+  String get dropFilesReadFailed;
 
   /// No description provided for @selectedFiles.
   ///

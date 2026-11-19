@@ -943,7 +943,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clearFileList => '清空列表';
 
   @override
-  String get dropFilesHint => '拖入音视频或字幕，或点击选择';
+  String get dropFilesHint => '拖入音视频、字幕或文件夹，也可点击选取文件';
+
+  @override
+  String get dropFilesScanning => '正在扫描拖入的文件…';
+
+  @override
+  String get dropFilesNoMatches => '拖入的文件夹里没有支持的音视频或字幕';
+
+  @override
+  String get dropFilesReadFailed => '有拖入项无法读取，请确认文件或文件夹可访问';
 
   @override
   String selectedFiles(Object arg1) {
@@ -2222,7 +2231,16 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get clearFileList => '清空列表';
 
   @override
-  String get dropFilesHint => '拖入音影片或字幕，或點選選擇';
+  String get dropFilesHint => '拖入音影片、字幕或資料夾，也可點選檔案';
+
+  @override
+  String get dropFilesScanning => '正在掃描拖入的檔案…';
+
+  @override
+  String get dropFilesNoMatches => '拖入的資料夾中沒有支援的音影片或字幕';
+
+  @override
+  String get dropFilesReadFailed => '有拖入項目無法讀取，請確認檔案或資料夾可存取';
 
   @override
   String selectedFiles(Object arg1) {

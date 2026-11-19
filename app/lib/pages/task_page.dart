@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
 
 import '../l10n/strings.dart';
 import '../app_state.dart';
@@ -17,7 +18,35 @@ class TaskPage extends StatefulWidget {
 }
 
 class _TaskPageState extends State<TaskPage> {
+  // Keep in sync with MEDIA_EXTS and SUBTITLE_EXTS in engine/kt/paths.py.
+  static const _inputExtensions = {
+    '.mp3',
+    '.wav',
+    '.flac',
+    '.m4a',
+    '.aac',
+    '.ogg',
+    '.opus',
+    '.wma',
+    '.aiff',
+    '.mp4',
+    '.mkv',
+    '.webm',
+    '.avi',
+    '.mov',
+    '.wmv',
+    '.m4v',
+    '.ts',
+    '.flv',
+    '.srt',
+    '.lrc',
+    '.vtt',
+    '.ass',
+    '.ssa',
+  };
+
   final ScrollController _logController = ScrollController();
+  int _pendingFileDrops = 0;
   var _stickLogsToBottom = true;
   var _lastLogCount = 0;
   String? _lastLog;
@@ -179,22 +208,73 @@ class _TaskPageState extends State<TaskPage> {
     }
   }
 
+  Future<void> _dropFiles(DropDoneDetails detail) async {
+    if (detail.files.isEmpty) return;
+    setState(() => _pendingFileDrops++);
+    final files = <String>[];
+    var readFailed = false;
+    try {
+      for (final item in detail.files) {
+        try {
+          final type = await FileSystemEntity.type(item.path);
+          if (type == FileSystemEntityType.file) {
+            files.add(item.path);
+            continue;
+          }
+          if (type != FileSystemEntityType.directory) {
+            readFailed = true;
+            continue;
+          }
+          final contents = Directory(item.path)
+              .list(recursive: true, followLinks: false)
+              .handleError((Object error) {
+                if (error is! FileSystemException) throw error;
+                readFailed = true;
+              });
+          final matches = <String>[];
+          await for (final entry in contents) {
+            if (entry is! File) continue;
+            final extension = path.extension(entry.path).toLowerCase();
+            if (_inputExtensions.contains(extension)) matches.add(entry.path);
+          }
+          files.addAll(matches..sort());
+        } on FileSystemException {
+          readFailed = true;
+        }
+      }
+      if (!mounted) return;
+      widget.app.addFiles(files);
+      if (readFailed || files.isEmpty) {
+        final l10n = context.l10n;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              readFailed ? l10n.dropFilesReadFailed : l10n.dropFilesNoMatches,
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pendingFileDrops--);
+    }
+  }
+
   Widget _inputCard(AppState app) {
     final p = paletteOf(context);
     final stopping = app.jobStatus == 'cancelling';
+    final scanning = _pendingFileDrops > 0;
     return KtSection(
       title: context.l10n.inputFiles,
       icon: Icons.library_music_outlined,
       action: TextButton.icon(
-        onPressed: app.files.isEmpty ? null : app.clearFiles,
+        onPressed: scanning || app.files.isEmpty ? null : app.clearFiles,
         icon: const Icon(Icons.playlist_remove_outlined, size: 18),
         label: Text(context.l10n.clearFileList),
         style: _textActionStyle,
       ),
       children: [
         DropTarget(
-          onDragDone: (detail) =>
-              app.addFiles(detail.files.map((file) => file.path)),
+          onDragDone: _dropFiles,
           child: Material(
             color: p.surface2,
             shape: RoundedRectangleBorder(
@@ -213,7 +293,9 @@ class _TaskPageState extends State<TaskPage> {
                     Icon(Icons.file_upload_outlined, color: p.accent, size: 24),
                     const SizedBox(height: 6),
                     Text(
-                      app.files.isEmpty
+                      scanning
+                          ? context.l10n.dropFilesScanning
+                          : app.files.isEmpty
                           ? context.l10n.dropFilesHint
                           : context.l10n.selectedFiles(app.files.length),
                       textAlign: TextAlign.center,
@@ -288,7 +370,7 @@ class _TaskPageState extends State<TaskPage> {
                 ? null
                 : app.hasActiveJob
                 ? (stopping ? null : app.cancelJob)
-                : (app.engineOnline && app.files.isNotEmpty
+                : (!scanning && app.engineOnline && app.files.isNotEmpty
                       ? app.startJob
                       : null),
             icon: Icon(

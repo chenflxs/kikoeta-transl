@@ -965,7 +965,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dropFilesHint =>
-      'Drop audio, video, or subtitles here, or click to choose';
+      'Drop media, subtitles, or folders here, or click to choose files';
+
+  @override
+  String get dropFilesScanning => 'Scanning dropped files…';
+
+  @override
+  String get dropFilesNoMatches =>
+      'The dropped folders contain no supported media or subtitles';
+
+  @override
+  String get dropFilesReadFailed =>
+      'Some dropped items could not be read. Check that they are accessible.';
 
   @override
   String selectedFiles(Object arg1) {

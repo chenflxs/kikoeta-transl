@@ -596,7 +596,10 @@
   "translationStageDescription": "使用已配置的翻译器",
   "inputFiles": "输入文件",
   "clearFileList": "清空列表",
-  "dropFilesHint": "拖入音视频或字幕，或点击选择",
+  "dropFilesHint": "拖入音视频、字幕或文件夹，也可点击选取文件",
+  "dropFilesScanning": "正在扫描拖入的文件…",
+  "dropFilesNoMatches": "拖入的文件夹里没有支持的音视频或字幕",
+  "dropFilesReadFailed": "有拖入项无法读取，请确认文件或文件夹可访问",
   "selectedFiles": "已选择 {arg1} 个文件，点击继续添加",
   "@selectedFiles": {
     "placeholders": {

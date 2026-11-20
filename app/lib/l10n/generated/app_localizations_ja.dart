@@ -104,6 +104,26 @@ class AppLocalizationsJa extends AppLocalizations {
   String get tasks => 'タスク';
 
   @override
+  String get completionActionLabel => 'タスク完了後';
+
+  @override
+  String get completionActionNone => '何もしない';
+
+  @override
+  String get completionActionLock => 'ロック';
+
+  @override
+  String get completionActionSleep => 'スリープ';
+
+  @override
+  String get completionActionShutdown => 'シャットダウン';
+
+  @override
+  String completionActionFailed(Object arg1, Object arg2) {
+    return 'タスク完了後の操作「$arg1」を実行できませんでした：$arg2';
+  }
+
+  @override
   String get models => 'モデル';
 
   @override
@@ -741,6 +761,15 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get statusFailed => '失敗';
+
+  @override
+  String get statusPartiallyFailed => '一部失敗';
+
+  @override
+  String get failedFiles => '失敗したファイル';
+
+  @override
+  String get failureReasonUnavailable => '失敗の理由は不明です';
 
   @override
   String get statusCancelled => 'キャンセル済み';

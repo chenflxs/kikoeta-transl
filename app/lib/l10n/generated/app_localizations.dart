@@ -266,6 +266,42 @@ abstract class AppLocalizations {
   /// **'任务'**
   String get tasks;
 
+  /// No description provided for @completionActionLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务完成后'**
+  String get completionActionLabel;
+
+  /// No description provided for @completionActionNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'无操作'**
+  String get completionActionNone;
+
+  /// No description provided for @completionActionLock.
+  ///
+  /// In zh, this message translates to:
+  /// **'锁定'**
+  String get completionActionLock;
+
+  /// No description provided for @completionActionSleep.
+  ///
+  /// In zh, this message translates to:
+  /// **'睡眠'**
+  String get completionActionSleep;
+
+  /// No description provided for @completionActionShutdown.
+  ///
+  /// In zh, this message translates to:
+  /// **'关机'**
+  String get completionActionShutdown;
+
+  /// No description provided for @completionActionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法执行任务完成后的“{arg1}”操作：{arg2}'**
+  String completionActionFailed(Object arg1, Object arg2);
+
   /// No description provided for @models.
   ///
   /// In zh, this message translates to:
@@ -1411,6 +1447,24 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'失败'**
   String get statusFailed;
+
+  /// No description provided for @statusPartiallyFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分失败'**
+  String get statusPartiallyFailed;
+
+  /// No description provided for @failedFiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败文件'**
+  String get failedFiles;
+
+  /// No description provided for @failureReasonUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可用的失败原因'**
+  String get failureReasonUnavailable;
 
   /// No description provided for @statusCancelled.
   ///

@@ -24,7 +24,7 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
         target.unlink(missing_ok=True)
         return
     payload = {
-        "version": 1,
+        "version": 2,
         "job_id": job.job_id,
         "files": job.files,
         "flags": vars(job.flags),
@@ -52,7 +52,7 @@ def load_checkpoints(work_dir: Path) -> list[dict[str, Any]]:
             continue
         try:
             raw = json.loads((folder / NAME).read_text(encoding="utf-8"))
-            if (not isinstance(raw, dict) or raw.get("version") != 1
+            if (not isinstance(raw, dict) or raw.get("version") not in (1, 2)
                     or raw.get("job_id") != folder.name
                     or raw.get("status") not in {"queued", "running", "pausing", "paused"}
                     or not isinstance(raw.get("files"), list)

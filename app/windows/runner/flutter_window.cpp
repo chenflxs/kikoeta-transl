@@ -1,8 +1,71 @@
 #include "flutter_window.h"
 
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
+#include <powrprof.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+DWORD RequestPowerAction(bool sleep) {
+  TOKEN_PRIVILEGES privileges{};
+  privileges.PrivilegeCount = 1;
+  privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+  if (!LookupPrivilegeValue(nullptr, SE_SHUTDOWN_NAME,
+                            &privileges.Privileges[0].Luid)) {
+    return GetLastError();
+  }
+
+  HANDLE token;
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+                        &token)) {
+    return GetLastError();
+  }
+
+  TOKEN_PRIVILEGES previous{};
+  DWORD previous_size = 0;
+  AdjustTokenPrivileges(token, FALSE, &privileges, sizeof(previous), &previous,
+                        &previous_size);
+  // Windows also reports an unassigned privilege through GetLastError.
+  DWORD error = GetLastError();
+  if (error == ERROR_SUCCESS) {
+    const bool accepted = sleep
+        ? SetSuspendState(FALSE, FALSE, FALSE) != FALSE
+        : ExitWindowsEx(EWX_POWEROFF, SHTDN_REASON_MAJOR_APPLICATION |
+                                        SHTDN_REASON_FLAG_PLANNED) != FALSE;
+    if (!accepted) error = GetLastError();
+    AdjustTokenPrivileges(token, FALSE, &previous, 0, nullptr, nullptr);
+  }
+  CloseHandle(token);
+  return error;
+}
+
+void RegisterPowerChannel(flutter::BinaryMessenger* messenger) {
+  flutter::MethodChannel<flutter::EncodableValue> channel(
+      messenger, "kikoeta_transl/power", &flutter::StandardMethodCodec::GetInstance());
+  channel.SetMethodCallHandler([](const auto& call, auto result) {
+    const auto& method = call.method_name();
+    DWORD error = ERROR_SUCCESS;
+    if (method == "lock") {
+      if (!LockWorkStation()) error = GetLastError();
+    } else if (method == "sleep" || method == "shutdown") {
+      error = RequestPowerAction(method == "sleep");
+    } else {
+      result->NotImplemented();
+      return;
+    }
+    if (error == ERROR_SUCCESS) {
+      result->Success();
+    } else {
+      result->Error("windows_power_action_failed", "Win32 " + std::to_string(error));
+    }
+  });
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +88,7 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  RegisterPowerChannel(flutter_controller_->engine()->messenger());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

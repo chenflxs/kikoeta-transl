@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 
 import '../l10n/strings.dart';
 import '../app_state.dart';
+import '../services/completion_action.dart';
 import '../widgets.dart';
 
 class TaskPage extends StatefulWidget {
@@ -117,8 +118,6 @@ class _TaskPageState extends State<TaskPage> {
       ).showSnackBar(SnackBar(content: Text(appL10n.logExportFailed(error))));
     }
   }
-
-  String _statusLabel(String status) => context.l10n.jobStatusLabel(status);
 
   ButtonStyle get _textActionStyle => TextButton.styleFrom(
     foregroundColor: paletteOf(context).muted,
@@ -349,6 +348,14 @@ class _TaskPageState extends State<TaskPage> {
             ),
           ),
         ],
+        if (Platform.isWindows)
+          KtSelectField<CompletionAction>(
+            label: context.l10n.completionActionLabel,
+            value: app.completionAction,
+            values: CompletionAction.values,
+            labelOf: (action) => action.label(context.l10n),
+            onChanged: app.setCompletionAction,
+          ),
         const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
@@ -416,7 +423,7 @@ class _TaskPageState extends State<TaskPage> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                _statusLabel(app.jobStatus),
+                context.l10n.jobStatusLabel(app.jobDisplayStatus),
                 style: TextStyle(
                   fontFamily: 'SarasaUI',
                   color: color,
@@ -445,6 +452,49 @@ class _TaskPageState extends State<TaskPage> {
           SelectableText(
             app.jobId!,
             style: TextStyle(color: p.dim, fontSize: 12),
+          ),
+        ],
+        if (app.jobFileFailures.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            context.l10n.failedFiles,
+            style: TextStyle(
+              color: p.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 150),
+            child: ListView.builder(
+              primary: false,
+              shrinkWrap: true,
+              itemCount: app.jobFileFailures.length,
+              itemBuilder: (context, index) {
+                final failure = app.jobFileFailures[index];
+                return Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.help,
+                    child: Tooltip(
+                      message: failure.error.trim().isEmpty
+                          ? context.l10n.failureReasonUnavailable
+                          : failure.error,
+                      preferBelow: false,
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Text(
+                          failure.path.split(RegExp(r'[\\/]')).last,
+                          style: TextStyle(color: p.text, fontSize: 12.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ],
@@ -486,6 +536,14 @@ class _TaskPageState extends State<TaskPage> {
                     style: TextStyle(fontSize: 12, color: p.text, height: 1.65),
                   ),
                 ),
+        ),
+        const SizedBox(height: 10),
+        LinearProgressIndicator(
+          value: app.jobProgress,
+          minHeight: 6,
+          borderRadius: BorderRadius.circular(999),
+          backgroundColor: p.surface3,
+          color: p.accent,
         ),
       ],
     );

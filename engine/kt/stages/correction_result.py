@@ -20,7 +20,7 @@ class CorrectionDecision:
 
 
 def parse_correction_response(
-    text: str, source: list[Cue], *, start_index: int = 1
+    text: str, source: list[Cue], *, start_index: int = 1, recover_empty_text: bool = True
 ) -> list[CorrectionDecision]:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
     if not normalized:
@@ -52,15 +52,19 @@ def parse_correction_response(
                      _legacy_messages(normalized, source, start_index)]
     for cue, decision in zip(source, decisions):
         if not decision.text.strip():
-            raise RuntimeError("矫正模型输出了空字幕文本")
-        if decision.needs_review:
+            if not recover_empty_text or not cue.message.strip():
+                raise RuntimeError("矫正模型输出了空字幕文本")
+            decision.text = cue.message
+            decision.needs_review = True
+            decision.reason = "模型返回空正文，保留原文待回听"
+        elif decision.needs_review:
             decision.text = cue.message
             decision.reason = decision.reason or "模型无法仅凭文本确定原文，保留待回听"
         elif decision.text != cue.message:
             if not _layout_matches_with_noise_cleanup(cue.message, decision.text):
                 decision.text = cue.message
                 decision.needs_review = True
-                decision.reason = "候选修改了标点、空白或换行，未采用，需复核"
+                decision.reason = "候选修改了标点、符号、空白或换行，未采用，需复核"
             elif _is_nonverbal(cue.message):
                 decision.text = cue.message
                 decision.needs_review = True
@@ -144,12 +148,12 @@ def _is_repeated_symbol_pattern(text: str) -> bool:
 
 
 def _protected_layout(text: str) -> list[str | None]:
-    # Word lengths may change, but punctuation/whitespace must stay between
-    # the same text runs, including at the beginning and end of a line.
+    # Protect ordinary symbols between text runs, including mixed runs such as
+    # ○ち. The replacement character still belongs to the correctable text.
     layout: list[str | None] = []
     in_text = False
     for char in text:
-        if char.isspace() or unicodedata.category(char).startswith("P"):
+        if char.isspace() or (char != "\ufffd" and _is_punctuation_or_symbol(char)):
             layout.append(char)
             in_text = False
         elif not in_text:

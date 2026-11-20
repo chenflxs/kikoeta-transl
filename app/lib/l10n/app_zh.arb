@@ -76,6 +76,22 @@
   },
   "recent": "最近",
   "tasks": "任务",
+  "completionActionLabel": "任务完成后",
+  "completionActionNone": "无操作",
+  "completionActionLock": "锁定",
+  "completionActionSleep": "睡眠",
+  "completionActionShutdown": "关机",
+  "completionActionFailed": "无法执行任务完成后的“{arg1}”操作：{arg2}",
+  "@completionActionFailed": {
+    "placeholders": {
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      }
+    }
+  },
   "models": "模型",
   "asrParameters": "听写参数",
   "modelParameters": "模型参数",
@@ -471,6 +487,9 @@
   "kikoetaSourceSuffix": " · 来自 Kikoeta",
   "statusCompleted": "已完成",
   "statusFailed": "失败",
+  "statusPartiallyFailed": "部分失败",
+  "failedFiles": "失败文件",
+  "failureReasonUnavailable": "没有可用的失败原因",
   "statusCancelled": "已取消",
   "recentTaskDetails": "{arg1} · {arg2}{arg3} · 缓存 {arg4}",
   "@recentTaskDetails": {

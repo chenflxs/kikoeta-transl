@@ -107,6 +107,26 @@ class AppLocalizationsRu extends AppLocalizations {
   String get tasks => 'Задачи';
 
   @override
+  String get completionActionLabel => 'После завершения задач';
+
+  @override
+  String get completionActionNone => 'Ничего не делать';
+
+  @override
+  String get completionActionLock => 'Заблокировать';
+
+  @override
+  String get completionActionSleep => 'Спящий режим';
+
+  @override
+  String get completionActionShutdown => 'Выключить';
+
+  @override
+  String completionActionFailed(Object arg1, Object arg2) {
+    return 'Не удалось выполнить действие «$arg1» после завершения задач: $arg2';
+  }
+
+  @override
   String get models => 'Модели';
 
   @override
@@ -756,6 +776,15 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get statusFailed => 'Ошибка';
+
+  @override
+  String get statusPartiallyFailed => 'Частичный сбой';
+
+  @override
+  String get failedFiles => 'Файлы с ошибками';
+
+  @override
+  String get failureReasonUnavailable => 'Причина ошибки неизвестна';
 
   @override
   String get statusCancelled => 'Отменено';

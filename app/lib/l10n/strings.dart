@@ -19,6 +19,7 @@ extension LocalizedJobStatus on AppLocalizations {
     'cancelling' => statusCancelling,
     'completed' || 'done' => statusCompleted,
     'failed' => statusFailed,
+    'partially_failed' => statusPartiallyFailed,
     'cancelled' => statusCancelled,
     _ => status,
   };

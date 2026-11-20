@@ -23,6 +23,9 @@ from .recent import record_finished_job
 from .settings import load_settings, merge_settings
 
 
+_RETRY_PENDING = "retry_pending"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -49,6 +52,7 @@ class Job:
     bus: EventBus = field(default_factory=EventBus)
     stop_event: Event = field(default_factory=Event)
     _finalizing: bool = field(default=False, repr=False)
+    _run_start_cursor: int = field(default=0, repr=False)
 
     @property
     def is_unfinished(self) -> bool:
@@ -68,6 +72,7 @@ class Job:
             "completed_files": sum(item.status == "done" for item in self.results),
             "total_files": len(self.files),
             "event_cursor": self.bus.cursor,
+            "run_start_cursor": self._run_start_cursor,
         }
 
 
@@ -109,6 +114,12 @@ class JobManager:
                     created_at=raw["created_at"], status="paused",
                     results=[FileResult(**item) for item in raw.get("results", [])],
                 )
+                # A failed file in a pre-retry checkpoint had only one attempt.
+                if raw["version"] == 1:
+                    for result in job.results:
+                        if result.status == "failed":
+                            result.status = "queued"
+                            result.stage = _RETRY_PENDING
                 self._repair_results(job)
                 job.bus.close()
                 self._jobs[job.job_id] = job
@@ -218,6 +229,7 @@ class JobManager:
 
     def _start(self, job: Job) -> None:
         job.stop_event.clear()
+        job._run_start_cursor = job.bus.cursor
         job.bus.reopen()
         job.status = "running"
         job.error = ""
@@ -230,6 +242,8 @@ class JobManager:
         while len(job.results) < len(job.files):
             job.results.append(_pending_result(job.files[len(job.results)]))
         for index, result in enumerate(job.results):
+            if result.status == "queued" and result.stage == _RETRY_PENDING:
+                continue
             if (result.status not in {"done", "failed"}
                     or (result.status == "done" and any(not Path(path).is_file() for path in result.outputs))):
                 job.results[index] = _pending_result(job.files[index])
@@ -249,6 +263,27 @@ class JobManager:
             obsolete = [path for path in candidate.cleanup_paths if path not in old_paths]
         cleanup_intermediates(*obsolete)
 
+    @staticmethod
+    def _process_job_file(job: Job, index: int, path: str, job_dir: Path, *, retry_pass: bool) -> FileResult:
+        def emit(event: str, **payload: Any) -> None:
+            # Clients count file_error as a finished file. A deferred failure is only a log.
+            if event == "file_error" and not retry_pass and not job.stop_event.is_set():
+                event = "log"
+            job.bus.emit(event, **payload)
+
+        try:
+            file_dir = job_dir / f"{index:04d}_{Path(path).stem}"
+            file_dir.mkdir(parents=True, exist_ok=True)
+            settings = job.settings
+            if job.cleanup_paths:
+                settings = replace(settings, output=replace(settings.output, directory=str(file_dir / "outputs")))
+            return process_file(path=path, settings=settings, flags=job.flags,
+                                job_dir=file_dir, emit=emit, stop_event=job.stop_event)
+        except Exception as exc:
+            error = str(exc) or type(exc).__name__
+            emit("file_error", file=path, error=error)
+            return replace(_pending_result(path), status="failed", stage="failed", error=error, message=error)
+
     def _run(self, job: Job) -> None:
         # Also supports the existing direct runner used by CLI-level tests.
         try:
@@ -257,8 +292,11 @@ class JobManager:
                     job.status = "running"
                 self._repair_results(job)
                 save_checkpoint(job, WORK_DIR)
+                total_files = len(job.files)
+                processed_files = sum(result.status in {"done", "failed"} for result in job.results)
             if not job.stop_event.is_set():
                 job.bus.emit("status", stage="running", message="任务开始")
+            job.bus.emit("file_progress", processed_files=processed_files, total_files=total_files)
             job_dir = WORK_DIR / job.job_id
             job_dir.mkdir(parents=True, exist_ok=True)
             uses_local_llama = (
@@ -267,22 +305,27 @@ class JobManager:
                     job.settings.correct.provider == "local_llama"
                     or job.settings.translate.provider == "local_llama")))
             with LLAMA_RUNTIME.job_scope() if uses_local_llama else nullcontext():
-                for index, path in enumerate(job.files):
-                    if job.stop_event.is_set():
-                        break
-                    if job.results[index].status in {"done", "failed"}:
-                        continue
-                    file_dir = job_dir / f"{index:04d}_{Path(path).stem}"
-                    file_dir.mkdir(parents=True, exist_ok=True)
-                    settings = job.settings
-                    if job.cleanup_paths:
-                        settings = replace(settings, output=replace(settings.output, directory=str(file_dir / "outputs")))
-                    result = process_file(path=path, settings=settings, flags=job.flags,
-                                          job_dir=file_dir, emit=job.bus.emit, stop_event=job.stop_event)
-                    with self._lock:
-                        if result.status != "cancelled" or job.status != "pausing":
-                            job.results[index] = result
-                        save_checkpoint(job, WORK_DIR)
+                for retry_pass in (False, True):
+                    for index, path in enumerate(job.files):
+                        if job.stop_event.is_set():
+                            break
+                        previous = job.results[index]
+                        retry_pending = previous.stage == _RETRY_PENDING
+                        if previous.status in {"done", "failed"} or retry_pending != retry_pass:
+                            continue
+                        if retry_pass:
+                            job.bus.emit("log", file=path, message="重试失败文件")
+                        result = self._process_job_file(job, index, path, job_dir, retry_pass=retry_pass)
+                        if result.status == "failed" and not retry_pass:
+                            result.status = "queued"
+                            result.stage = _RETRY_PENDING
+                        with self._lock:
+                            if result.status != "cancelled" or job.status != "pausing":
+                                job.results[index] = result
+                            save_checkpoint(job, WORK_DIR)
+                        if result.status in {"done", "failed"}:
+                            processed_files += 1
+                            job.bus.emit("file_progress", processed_files=processed_files, total_files=total_files)
             with self._lock:
                 pending = any(item.status not in {"done", "failed"} for item in job.results)
                 if pending and job.status == "pausing":

@@ -106,6 +106,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tasks => 'Tasks';
 
   @override
+  String get completionActionLabel => 'After tasks complete';
+
+  @override
+  String get completionActionNone => 'Do nothing';
+
+  @override
+  String get completionActionLock => 'Lock';
+
+  @override
+  String get completionActionSleep => 'Sleep';
+
+  @override
+  String get completionActionShutdown => 'Shut down';
+
+  @override
+  String completionActionFailed(Object arg1, Object arg2) {
+    return 'Could not perform the “$arg1” action after tasks completed: $arg2';
+  }
+
+  @override
   String get models => 'Models';
 
   @override
@@ -750,6 +770,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusFailed => 'Failed';
+
+  @override
+  String get statusPartiallyFailed => 'Partially failed';
+
+  @override
+  String get failedFiles => 'Failed files';
+
+  @override
+  String get failureReasonUnavailable => 'Failure reason unavailable';
 
   @override
   String get statusCancelled => 'Cancelled';

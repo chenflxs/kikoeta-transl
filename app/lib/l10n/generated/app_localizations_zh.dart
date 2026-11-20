@@ -104,6 +104,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get tasks => '任务';
 
   @override
+  String get completionActionLabel => '任务完成后';
+
+  @override
+  String get completionActionNone => '无操作';
+
+  @override
+  String get completionActionLock => '锁定';
+
+  @override
+  String get completionActionSleep => '睡眠';
+
+  @override
+  String get completionActionShutdown => '关机';
+
+  @override
+  String completionActionFailed(Object arg1, Object arg2) {
+    return '无法执行任务完成后的“$arg1”操作：$arg2';
+  }
+
+  @override
   String get models => '模型';
 
   @override
@@ -735,6 +755,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get statusFailed => '失败';
+
+  @override
+  String get statusPartiallyFailed => '部分失败';
+
+  @override
+  String get failedFiles => '失败文件';
+
+  @override
+  String get failureReasonUnavailable => '没有可用的失败原因';
 
   @override
   String get statusCancelled => '已取消';
@@ -1392,6 +1421,26 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get tasks => '任務';
 
   @override
+  String get completionActionLabel => '任務完成後';
+
+  @override
+  String get completionActionNone => '無操作';
+
+  @override
+  String get completionActionLock => '鎖定';
+
+  @override
+  String get completionActionSleep => '睡眠';
+
+  @override
+  String get completionActionShutdown => '關機';
+
+  @override
+  String completionActionFailed(Object arg1, Object arg2) {
+    return '無法執行任務完成後的「$arg1」操作：$arg2';
+  }
+
+  @override
   String get models => '模型';
 
   @override
@@ -2023,6 +2072,15 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get statusFailed => '失敗';
+
+  @override
+  String get statusPartiallyFailed => '部分失敗';
+
+  @override
+  String get failedFiles => '失敗檔案';
+
+  @override
+  String get failureReasonUnavailable => '沒有可用的失敗原因';
 
   @override
   String get statusCancelled => '已取消';

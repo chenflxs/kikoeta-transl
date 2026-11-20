@@ -11,6 +11,9 @@ from pathlib import Path
 from ..models import Cue
 
 
+_JSON_FENCE = re.compile(r"(`{3,}|~{3,})[ \t]*(?:json)?[ \t]*\n", re.IGNORECASE)
+
+
 @dataclass
 class CorrectionDecision:
     text: str
@@ -23,13 +26,26 @@ def parse_correction_response(
     text: str, source: list[Cue], *, start_index: int = 1, recover_empty_text: bool = True
 ) -> list[CorrectionDecision]:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    normalized = normalized.removeprefix("\ufeff").lstrip()
     if not normalized:
         raise RuntimeError("矫正模型返回空内容")
+    fence = _JSON_FENCE.match(normalized)
+    json_text = normalized
+    if fence is not None:
+        json_text = normalized[fence.end():]
+        before_closing, _, last_line = json_text.rpartition("\n")
+        closing = last_line.strip(" \t")
+        marker = fence[1]
+        if closing.startswith(marker) and not closing.strip(marker[0]):
+            json_text = before_closing
     try:
-        payload = json.loads(normalized)
-    except json.JSONDecodeError:
-        payload = None
-    if payload is not None:
+        payload = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        if fence is not None:
+            raise RuntimeError(f"矫正模型返回了无效 JSON（第 {exc.lineno} 行，第 {exc.colno} 列）") from exc
+        decisions = [CorrectionDecision(message) for message in
+                     _legacy_messages(normalized, source, start_index)]
+    else:
         if not isinstance(payload, list) or len(payload) != len(source):
             raise RuntimeError("矫正模型改变了字幕条目数")
         decisions = []
@@ -47,9 +63,6 @@ def parse_correction_response(
                 ))
             else:
                 raise RuntimeError("矫正模型输出了无效的字幕条目或复核字段")
-    else:
-        decisions = [CorrectionDecision(message) for message in
-                     _legacy_messages(normalized, source, start_index)]
     for cue, decision in zip(source, decisions):
         if not decision.text.strip():
             if not recover_empty_text or not cue.message.strip():

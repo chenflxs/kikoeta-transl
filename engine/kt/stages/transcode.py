@@ -22,6 +22,7 @@ def transcode_to_wav(
     output = work_dir / f"{Path(input_path).stem}.16k.wav"
     command = [
         ffmpeg,
+        "-hide_banner",
         "-y",
         "-i",
         str(input_path),

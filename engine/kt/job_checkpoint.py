@@ -37,6 +37,8 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
         "status": job.status,
         "results": [result.to_dict() for result in job.results],
     }
+    if job.additional_context:
+        payload["additional_context"] = job.additional_context
     temporary = folder / (NAME + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     os.replace(temporary, target)

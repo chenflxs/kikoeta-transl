@@ -45,8 +45,20 @@ class _TaskPageState extends State<TaskPage> {
     '.ass',
     '.ssa',
   };
+  static const _additionalFileExtensions = [
+    'txt',
+    'md',
+    'csv',
+    'tsv',
+    'json',
+    'srt',
+    'lrc',
+    'vtt',
+  ];
 
   final ScrollController _logController = ScrollController();
+  final TextEditingController _additionalText = TextEditingController();
+  final List<String> _additionalFiles = [];
   int _pendingFileDrops = 0;
   var _stickLogsToBottom = true;
   var _lastLogCount = 0;
@@ -60,6 +72,7 @@ class _TaskPageState extends State<TaskPage> {
 
   @override
   void dispose() {
+    _additionalText.dispose();
     _logController
       ..removeListener(_onLogScroll)
       ..dispose();
@@ -207,6 +220,95 @@ class _TaskPageState extends State<TaskPage> {
     }
   }
 
+  Future<void> _pickAdditionalFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: _additionalFileExtensions,
+      allowMultiple: true,
+    );
+    if (result != null && mounted) {
+      final existing = _additionalFiles.toSet();
+      setState(() {
+        _additionalFiles.addAll(
+          result.paths.whereType<String>().where(existing.add),
+        );
+      });
+    }
+  }
+
+  Widget _additionalContentCard() {
+    final l10n = context.l10n;
+    return KtSection(
+      title: l10n.additionalContent,
+      icon: Icons.description_outlined,
+      action: TextButton.icon(
+        onPressed: _pickAdditionalFiles,
+        icon: const Icon(Icons.attach_file, size: 18),
+        label: Text(l10n.addReferenceFiles),
+        style: _textActionStyle,
+      ),
+      children: [
+        KtField(
+          controller: _additionalText,
+          label: l10n.referenceText,
+          hint: l10n.referenceTextHint,
+          maxLines: 3,
+        ),
+        if (_additionalFiles.isNotEmpty)
+          _fileList(
+            _additionalFiles,
+            icon: Icons.description_outlined,
+            maxHeight: 150,
+            remove: (file) => setState(() => _additionalFiles.remove(file)),
+          ),
+      ],
+    );
+  }
+
+  Widget _fileList(
+    List<String> files, {
+    required IconData icon,
+    required double maxHeight,
+    required ValueChanged<String> remove,
+  }) {
+    final p = paletteOf(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: ListView.builder(
+        primary: false,
+        shrinkWrap: true,
+        itemCount: files.length,
+        itemBuilder: (context, index) {
+          final file = files[index];
+          return ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+            minLeadingWidth: 24,
+            horizontalTitleGap: 10,
+            leading: Icon(icon, color: p.dim, size: 17),
+            title: Text(
+              file.split(RegExp(r'[\\/]')).last,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.text, fontSize: 12.5),
+            ),
+            subtitle: Text(
+              file,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.dim, fontSize: 11),
+            ),
+            trailing: IconButton(
+              tooltip: context.l10n.removeFile,
+              onPressed: () => remove(file),
+              icon: Icon(Icons.close, size: 16, color: p.dim),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _dropFiles(DropDoneDetails detail) async {
     if (detail.files.isEmpty) return;
     setState(() => _pendingFileDrops++);
@@ -308,44 +410,11 @@ class _TaskPageState extends State<TaskPage> {
         ),
         if (app.files.isNotEmpty) ...[
           const SizedBox(height: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 230),
-            child: ListView.builder(
-              primary: false,
-              shrinkWrap: true,
-              itemCount: app.files.length,
-              itemBuilder: (context, index) {
-                final file = app.files[index];
-                return ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                  minLeadingWidth: 24,
-                  horizontalTitleGap: 10,
-                  leading: Icon(
-                    Icons.audio_file_outlined,
-                    color: p.dim,
-                    size: 17,
-                  ),
-                  title: Text(
-                    file.split(RegExp(r'[\\/]')).last,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: p.text, fontSize: 12.5),
-                  ),
-                  subtitle: Text(
-                    file,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: p.dim, fontSize: 11),
-                  ),
-                  trailing: IconButton(
-                    tooltip: context.l10n.removeFile,
-                    onPressed: () => app.removeFile(file),
-                    icon: Icon(Icons.close, size: 16, color: p.dim),
-                  ),
-                );
-              },
-            ),
+          _fileList(
+            app.files,
+            icon: Icons.audio_file_outlined,
+            maxHeight: 230,
+            remove: app.removeFile,
           ),
         ],
         if (Platform.isWindows)
@@ -378,7 +447,10 @@ class _TaskPageState extends State<TaskPage> {
                 : app.hasActiveJob
                 ? (stopping ? null : app.cancelJob)
                 : (!scanning && app.engineOnline && app.files.isNotEmpty
-                      ? app.startJob
+                      ? () => app.startJob(
+                          additionalText: _additionalText.text,
+                          additionalFiles: _additionalFiles.toList(),
+                        )
                       : null),
             icon: Icon(
               app.submittingJob
@@ -559,7 +631,11 @@ class _TaskPageState extends State<TaskPage> {
         return KtPage(
           title: context.l10n.tasks,
           secondaryChildren: [_workflowCard(app), _logCard(app)],
-          children: [_stageCard(app), _inputCard(app)],
+          children: [
+            _stageCard(app),
+            _additionalContentCard(),
+            _inputCard(app),
+          ],
         );
       },
     );

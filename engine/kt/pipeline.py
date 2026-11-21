@@ -35,6 +35,8 @@ def process_file(
     job_dir: Path,
     emit: EmitFn,
     stop_event: Event | None = None,
+    *,
+    additional_context: str = "",
 ) -> FileResult:
     kind = detect_kind(path)
     result = FileResult(path=path, kind=kind)
@@ -43,6 +45,10 @@ def process_file(
     correction_review = None
     translation_review = None
     asr_cleanup_entries: list[dict] = []
+    reference_context = (
+        "任务附加资料（用来理解台本、设定和术语。只处理目标字幕，沿用要求的输出格式）：\n"
+        + additional_context
+    ) if additional_context else ""
     try:
         _raise_if_stopped(stop_event)
         if kind == "subtitle":
@@ -114,6 +120,7 @@ def process_file(
                 file=path,
                 stop_event=stop_event,
                 review=correction_review,
+                reference_context=reference_context,
             )
             _raise_if_stopped(stop_event)
             if damaged_asr:
@@ -140,6 +147,7 @@ def process_file(
                 emit=emit,
                 stop_event=stop_event,
                 review=translation_review,
+                reference_context=reference_context,
             )
 
         _raise_if_stopped(stop_event)

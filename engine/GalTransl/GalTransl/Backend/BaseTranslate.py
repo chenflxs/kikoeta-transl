@@ -1276,6 +1276,19 @@ class BaseTranslate:
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ]
+        reference_context = getattr(self.pj_config, "runtime_reference_context", "")
+        if reference_context:
+            # The prompt is already rendered. Keep template placeholders in the
+            # reference text literal and keep the copy out of multi-turn history.
+            for index in range(len(messages) - 1, -1, -1):
+                message = messages[index]
+                if message["role"] == "user":
+                    messages = list(messages)
+                    messages[index] = {
+                        **message,
+                        "content": f"{reference_context}\n\n{message['content']}",
+                    }
+                    break
 
         while True:
             # Check stop_event before each API attempt so that cancelling

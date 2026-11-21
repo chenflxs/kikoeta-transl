@@ -350,6 +350,7 @@ class JobRequest:
     settings_override: dict[str, Any] = field(default_factory=dict)
     cleanup_paths: list[str] = field(default_factory=list)
     cache_context: dict[str, Any] = field(default_factory=dict)
+    additional_context: str = ""
 
 
 @dataclass

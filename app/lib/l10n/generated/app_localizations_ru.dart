@@ -998,6 +998,24 @@ class AppLocalizationsRu extends AppLocalizations {
   String get inputFiles => 'Входные файлы';
 
   @override
+  String get additionalContent => 'Дополнительные материалы';
+
+  @override
+  String get addReferenceFiles => 'Добавить файлы';
+
+  @override
+  String get referenceText => 'Справочный текст';
+
+  @override
+  String get referenceTextHint =>
+      'Добавьте сценарий, описание мира или термины для правки и перевода';
+
+  @override
+  String referenceFileReadFailed(String name) {
+    return 'Не удалось прочитать «$name». Проверьте доступ к файлу и кодировку UTF-8.';
+  }
+
+  @override
   String get clearFileList => 'Очистить список';
 
   @override

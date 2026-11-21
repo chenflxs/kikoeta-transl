@@ -975,6 +975,23 @@ class AppLocalizationsJa extends AppLocalizations {
   String get inputFiles => '入力ファイル';
 
   @override
+  String get additionalContent => '追加コンテンツ';
+
+  @override
+  String get addReferenceFiles => 'テキストファイルを追加';
+
+  @override
+  String get referenceText => '参考テキスト';
+
+  @override
+  String get referenceTextHint => '校正や翻訳の参考にする台本、設定、用語を入力';
+
+  @override
+  String referenceFileReadFailed(String name) {
+    return '「$name」を読み込めません。アクセス可能な UTF-8 テキストファイルか確認してください。';
+  }
+
+  @override
   String get clearFileList => '一覧をクリア';
 
   @override

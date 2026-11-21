@@ -990,6 +990,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inputFiles => 'Input files';
 
   @override
+  String get additionalContent => 'Additional content';
+
+  @override
+  String get addReferenceFiles => 'Add text files';
+
+  @override
+  String get referenceText => 'Reference text';
+
+  @override
+  String get referenceTextHint =>
+      'Add scripts, setting notes, or terminology for correction and translation';
+
+  @override
+  String referenceFileReadFailed(String name) {
+    return 'Could not read “$name”. Check that the file is accessible and encoded as UTF-8.';
+  }
+
+  @override
   String get clearFileList => 'Clear list';
 
   @override

@@ -969,6 +969,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get inputFiles => '输入文件';
 
   @override
+  String get additionalContent => '附加内容';
+
+  @override
+  String get addReferenceFiles => '添加文本文件';
+
+  @override
+  String get referenceText => '参考文本';
+
+  @override
+  String get referenceTextHint => '输入台本、设定或术语，供矫正和翻译参考';
+
+  @override
+  String referenceFileReadFailed(String name) {
+    return '无法读取「$name」，请确认文件可访问且为 UTF-8 文本。';
+  }
+
+  @override
   String get clearFileList => '清空列表';
 
   @override
@@ -2284,6 +2301,23 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get inputFiles => '輸入檔案';
+
+  @override
+  String get additionalContent => '附加內容';
+
+  @override
+  String get addReferenceFiles => '新增文字檔';
+
+  @override
+  String get referenceText => '參考文字';
+
+  @override
+  String get referenceTextHint => '輸入劇本、設定或術語，供校正和翻譯參考';
+
+  @override
+  String referenceFileReadFailed(String name) {
+    return '無法讀取「$name」，請確認檔案可存取且使用 UTF-8 編碼。';
+  }
 
   @override
   String get clearFileList => '清空列表';

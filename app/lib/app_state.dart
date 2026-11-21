@@ -254,7 +254,10 @@ class AppState extends ChangeNotifier {
     engineOnline = false;
   }
 
-  Future<void> startJob() async {
+  Future<void> startJob({
+    String additionalText = '',
+    List<String> additionalFiles = const [],
+  }) async {
     if (hasActiveJob) return;
     if (files.isEmpty) {
       _engineMessage = () => appL10n.addFilesFirst;
@@ -268,6 +271,8 @@ class AppState extends ChangeNotifier {
         files: List.of(files),
         enableCorrect: enableCorrect,
         enableTranslate: enableTranslate,
+        additionalText: additionalText,
+        additionalFiles: additionalFiles,
       );
       logs.clear();
       _restoreJobFailures();

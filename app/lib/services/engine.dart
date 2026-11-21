@@ -344,12 +344,27 @@ class EngineClient {
     required List<String> files,
     required bool enableCorrect,
     required bool enableTranslate,
+    String additionalText = '',
+    List<String> additionalFiles = const [],
   }) async {
+    final text = additionalText.trim();
+    final sections = <String>[if (text.isNotEmpty) text];
+    for (final file in additionalFiles) {
+      final name = p.basename(file);
+      try {
+        final content = (await File(file).readAsString()).trim();
+        if (content.contains('\u0000')) throw const FormatException();
+        if (content.isNotEmpty) sections.add('[$name]\n$content');
+      } on Exception {
+        throw StateError(appL10n.referenceFileReadFailed(name));
+      }
+    }
     final res = await http.post(
       _uri('/api/jobs'),
       headers: {'content-type': 'application/json'},
       body: jsonEncode({
         'files': files,
+        if (sections.isNotEmpty) 'additional_context': sections.join('\n\n'),
         'flags': {
           'enable_correct': enableCorrect,
           'enable_translate': enableTranslate,

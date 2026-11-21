@@ -243,6 +243,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/jobs":
             payload = self._read_json()
             flags_raw = payload.get("flags") or {}
+            additional_context = payload.get("additional_context", "")
+            if not isinstance(additional_context, str):
+                self._error(400, "additional_context must be text")
+                return
             request = JobRequest(
                 files=list(payload.get("files") or []),
                 flags=StageFlags(
@@ -250,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
                     enable_translate=bool(flags_raw.get("enable_translate", True)),
                 ),
                 settings_override=payload.get("settings") or {},
+                additional_context=additional_context.strip(),
             )
             try:
                 job = MANAGER.create(request)

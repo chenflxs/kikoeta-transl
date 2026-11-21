@@ -1844,6 +1844,36 @@ abstract class AppLocalizations {
   /// **'输入文件'**
   String get inputFiles;
 
+  /// No description provided for @additionalContent.
+  ///
+  /// In zh, this message translates to:
+  /// **'附加内容'**
+  String get additionalContent;
+
+  /// No description provided for @addReferenceFiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加文本文件'**
+  String get addReferenceFiles;
+
+  /// No description provided for @referenceText.
+  ///
+  /// In zh, this message translates to:
+  /// **'参考文本'**
+  String get referenceText;
+
+  /// No description provided for @referenceTextHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入台本、设定或术语，供矫正和翻译参考'**
+  String get referenceTextHint;
+
+  /// No description provided for @referenceFileReadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取「{name}」，请确认文件可访问且为 UTF-8 文本。'**
+  String referenceFileReadFailed(String name);
+
   /// No description provided for @clearFileList.
   ///
   /// In zh, this message translates to:

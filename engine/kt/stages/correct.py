@@ -99,6 +99,7 @@ def correct_cues(
     file: str | None = None,
     stop_event: Event | None = None,
     review: CorrectionReview | None = None,
+    reference_context: str = "",
 ) -> list[Cue]:
     raise_if_cancelled(stop_event)
     if not cues:
@@ -124,6 +125,7 @@ def correct_cues(
                 file=file,
                 stop_event=stop_event,
                 review=review,
+                reference_context=reference_context,
             )
     if (
         settings.correct.provider == "online"
@@ -145,6 +147,7 @@ def correct_cues(
             return _correct_cues_with_endpoint(
                 cues, endpoint, "", emit=emit, file=file, stop_event=stop_event,
                 review=review,
+                reference_context=reference_context,
             )
     elif (
         settings.translate.provider == "online"
@@ -163,6 +166,7 @@ def correct_cues(
     return _correct_cues_with_endpoint(
         cues, endpoint, settings.proxy, emit=emit, file=file, stop_event=stop_event,
         review=review,
+        reference_context=reference_context,
     )
 
 
@@ -175,6 +179,7 @@ def _correct_cues_with_endpoint(
     file: str | None = None,
     stop_event: Event | None = None,
     review: CorrectionReview | None = None,
+    reference_context: str = "",
 ) -> list[Cue]:
     if not endpoint.base_url or not endpoint.model:
         raise RuntimeError("未配置矫正模型的 API 地址与模型名")
@@ -213,6 +218,8 @@ def _correct_cues_with_endpoint(
         )
         try:
             user_text = _build_correction_input(full_context, batch, offset)
+            if reference_context:
+                user_text = f"{reference_context}\n\n{user_text}"
             content = _chat_with_cancellation(
                 endpoint,
                 user_text,

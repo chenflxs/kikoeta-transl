@@ -115,6 +115,7 @@ class JobSpec:
     # 只翻译输入目录下这些文件（相对输入目录的文件名）。空 = 全部文件。
     # 用于试译：只翻一两个文件验证文风，再全量启动。
     input_files: list[str] = field(default_factory=list)
+    reference_context: str = field(default="", repr=False)
 
 
 @dataclass(slots=True)
@@ -182,6 +183,7 @@ async def run_job_async(
 
     try:
         cfg = CProjectConfig(spec.project_dir, spec.config_file_name)
+        cfg.runtime_reference_context = spec.reference_context
         cfg.non_interactive = True  # 前端启动，非交互模式
         cfg.runtime_project_dir = spec.project_dir
         app_settings = load_app_settings()

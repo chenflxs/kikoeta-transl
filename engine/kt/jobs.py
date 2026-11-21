@@ -53,6 +53,7 @@ class Job:
     stop_event: Event = field(default_factory=Event)
     _finalizing: bool = field(default=False, repr=False)
     _run_start_cursor: int = field(default=0, repr=False)
+    additional_context: str = field(default="", repr=False)
 
     @property
     def is_unfinished(self) -> bool:
@@ -92,6 +93,8 @@ def _resume_key(job: Job) -> str:
     origin = source_base(job.cache_context.get("source_base"))
     if job.source == "kikoeta" and origin:
         raw.append(origin)
+    if job.additional_context:
+        raw.append(job.additional_context)
     return hashlib.sha256(json.dumps(raw, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -111,6 +114,7 @@ class JobManager:
                     cache_context=dict(raw.get("cache_context") or {}),
                     lls_output=OutputSettings(**raw["lls_output"]) if raw.get("lls_output") else None,
                     cleanup_paths=list(raw.get("cleanup_paths") or []),
+                    additional_context=raw.get("additional_context", ""),
                     created_at=raw["created_at"], status="paused",
                     results=[FileResult(**item) for item in raw.get("results", [])],
                 )
@@ -144,6 +148,7 @@ class JobManager:
             cache_context=dict(request.cache_context),
             lls_output=saved_settings.output if source == "kikoeta" else None,
             cleanup_paths=list(request.cleanup_paths),
+            additional_context=request.additional_context,
             results=[_pending_result(path) for path in files],
         )
         with self._lock:
@@ -278,7 +283,8 @@ class JobManager:
             if job.cleanup_paths:
                 settings = replace(settings, output=replace(settings.output, directory=str(file_dir / "outputs")))
             return process_file(path=path, settings=settings, flags=job.flags,
-                                job_dir=file_dir, emit=emit, stop_event=job.stop_event)
+                                job_dir=file_dir, emit=emit, stop_event=job.stop_event,
+                                additional_context=job.additional_context)
         except Exception as exc:
             error = str(exc) or type(exc).__name__
             emit("file_error", file=path, error=error)

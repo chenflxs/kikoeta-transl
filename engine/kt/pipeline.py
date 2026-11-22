@@ -45,10 +45,6 @@ def process_file(
     correction_review = None
     translation_review = None
     asr_cleanup_entries: list[dict] = []
-    reference_context = (
-        "任务附加资料（用来理解台本、设定和术语。只处理目标字幕，沿用要求的输出格式）：\n"
-        + additional_context
-    ) if additional_context else ""
     try:
         _raise_if_stopped(stop_event)
         if kind == "subtitle":
@@ -113,6 +109,10 @@ def process_file(
             result.stage = "correcting"
             from .stages.correct import correct_cues
             correction_review = CorrectionReview(source_file=path)
+            reference_context = (
+                "任务附加资料（用来理解台本、设定和术语。只处理目标字幕，沿用要求的输出格式）：\n"
+                + additional_context
+            ) if additional_context else ""
             cues = correct_cues(
                 cues,
                 settings,
@@ -147,7 +147,6 @@ def process_file(
                 emit=emit,
                 stop_event=stop_event,
                 review=translation_review,
-                reference_context=reference_context,
             )
 
         _raise_if_stopped(stop_event)

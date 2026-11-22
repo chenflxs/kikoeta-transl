@@ -1000,7 +1000,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get referenceTextHint =>
-      'Add scripts, setting notes, or terminology for correction and translation';
+      'Add scripts, setting notes, or terminology for correction only';
 
   @override
   String referenceFileReadFailed(String name) {

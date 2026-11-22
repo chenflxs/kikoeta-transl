@@ -362,7 +362,6 @@ class _TaskPageState extends State<TaskPage> {
 
   Widget _inputCard(AppState app) {
     final p = paletteOf(context);
-    final stopping = app.jobStatus == 'cancelling';
     final scanning = _pendingFileDrops > 0;
     return KtSection(
       title: context.l10n.inputFiles,
@@ -417,7 +416,18 @@ class _TaskPageState extends State<TaskPage> {
             remove: app.removeFile,
           ),
         ],
-        if (Platform.isWindows)
+      ],
+    );
+  }
+
+  Widget _runControls(AppState app) {
+    final p = paletteOf(context);
+    final stopping = app.jobStatus == 'cancelling';
+    final scanning = _pendingFileDrops > 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (Platform.isWindows) ...[
           KtSelectField<CompletionAction>(
             label: context.l10n.completionActionLabel,
             value: app.completionAction,
@@ -425,7 +435,8 @@ class _TaskPageState extends State<TaskPage> {
             labelOf: (action) => action.label(context.l10n),
             onChanged: app.setCompletionAction,
           ),
-        const SizedBox(height: 10),
+          const SizedBox(height: 10),
+        ],
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
@@ -630,11 +641,14 @@ class _TaskPageState extends State<TaskPage> {
         _scheduleLogScroll(app);
         return KtPage(
           title: context.l10n.tasks,
-          secondaryChildren: [_workflowCard(app), _logCard(app)],
+          // KtPage splits alternating children into columns on wide windows.
           children: [
+            _inputCard(app),
             _stageCard(app),
             _additionalContentCard(),
-            _inputCard(app),
+            _workflowCard(app),
+            _runControls(app),
+            _logCard(app),
           ],
         );
       },

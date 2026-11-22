@@ -1008,7 +1008,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get referenceTextHint =>
-      'Добавьте сценарий, описание мира или термины для правки и перевода';
+      'Добавьте сценарий, описание мира или термины только для правки';
 
   @override
   String referenceFileReadFailed(String name) {

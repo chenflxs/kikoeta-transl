@@ -978,7 +978,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get referenceText => '参考文本';
 
   @override
-  String get referenceTextHint => '输入台本、设定或术语，供矫正和翻译参考';
+  String get referenceTextHint => '输入台本、设定或术语，仅供矫正参考';
 
   @override
   String referenceFileReadFailed(String name) {
@@ -2312,7 +2312,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get referenceText => '參考文字';
 
   @override
-  String get referenceTextHint => '輸入劇本、設定或術語，供校正和翻譯參考';
+  String get referenceTextHint => '輸入劇本、設定或術語，僅供校正參考';
 
   @override
   String referenceFileReadFailed(String name) {

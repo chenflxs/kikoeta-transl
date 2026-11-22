@@ -293,7 +293,7 @@
   "additionalContent": "附加內容",
   "addReferenceFiles": "新增文字檔",
   "referenceText": "參考文字",
-  "referenceTextHint": "輸入劇本、設定或術語，供校正和翻譯參考",
+  "referenceTextHint": "輸入劇本、設定或術語，僅供校正參考",
   "referenceFileReadFailed": "無法讀取「{name}」，請確認檔案可存取且使用 UTF-8 編碼。",
   "clearFileList": "清空列表",
   "dropFilesHint": "拖入音影片、字幕或資料夾，也可點選檔案",

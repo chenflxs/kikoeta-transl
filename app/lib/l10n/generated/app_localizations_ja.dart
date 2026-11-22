@@ -984,7 +984,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get referenceText => '参考テキスト';
 
   @override
-  String get referenceTextHint => '校正や翻訳の参考にする台本、設定、用語を入力';
+  String get referenceTextHint => '台本、設定、用語を入力（校正時のみ参照）';
 
   @override
   String referenceFileReadFailed(String name) {

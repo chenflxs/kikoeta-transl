@@ -293,7 +293,7 @@
   "additionalContent": "Additional content",
   "addReferenceFiles": "Add text files",
   "referenceText": "Reference text",
-  "referenceTextHint": "Add scripts, setting notes, or terminology for correction and translation",
+  "referenceTextHint": "Add scripts, setting notes, or terminology for correction only",
   "referenceFileReadFailed": "Could not read “{name}”. Check that the file is accessible and encoded as UTF-8.",
   "clearFileList": "Clear list",
   "dropFilesHint": "Drop media, subtitles, or folders here, or click to choose files",

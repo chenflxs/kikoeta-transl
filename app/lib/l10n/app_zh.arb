@@ -617,7 +617,7 @@
   "additionalContent": "附加内容",
   "addReferenceFiles": "添加文本文件",
   "referenceText": "参考文本",
-  "referenceTextHint": "输入台本、设定或术语，供矫正和翻译参考",
+  "referenceTextHint": "输入台本、设定或术语，仅供矫正参考",
   "referenceFileReadFailed": "无法读取「{name}」，请确认文件可访问且为 UTF-8 文本。",
   "@referenceFileReadFailed": {
     "placeholders": {

@@ -1865,7 +1865,7 @@ abstract class AppLocalizations {
   /// No description provided for @referenceTextHint.
   ///
   /// In zh, this message translates to:
-  /// **'输入台本、设定或术语，供矫正和翻译参考'**
+  /// **'输入台本、设定或术语，仅供矫正参考'**
   String get referenceTextHint;
 
   /// No description provided for @referenceFileReadFailed.

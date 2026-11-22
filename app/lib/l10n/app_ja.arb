@@ -293,7 +293,7 @@
   "additionalContent": "追加コンテンツ",
   "addReferenceFiles": "テキストファイルを追加",
   "referenceText": "参考テキスト",
-  "referenceTextHint": "校正や翻訳の参考にする台本、設定、用語を入力",
+  "referenceTextHint": "台本、設定、用語を入力（校正時のみ参照）",
   "referenceFileReadFailed": "「{name}」を読み込めません。アクセス可能な UTF-8 テキストファイルか確認してください。",
   "clearFileList": "一覧をクリア",
   "dropFilesHint": "音声・動画・字幕・フォルダーをドロップ、またはクリックしてファイルを選択",

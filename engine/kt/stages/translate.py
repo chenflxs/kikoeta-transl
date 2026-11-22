@@ -45,8 +45,6 @@ def translate_cues(
     emit: EmitFn | None = None,
     stop_event: Event | None = None,
     review: TranslationReview | None = None,
-    *,
-    reference_context: str = "",
 ) -> list[Cue]:
     raise_if_cancelled(stop_event)
     if review is not None:
@@ -78,7 +76,6 @@ def translate_cues(
                 emit=emit,
                 stop_event=stop_event,
                 review=review,
-                reference_context=reference_context,
             )
     return _translate_and_repair(
         cues,
@@ -87,7 +84,6 @@ def translate_cues(
         emit=emit,
         stop_event=stop_event,
         review=review,
-        reference_context=reference_context,
     )
 
 
@@ -98,12 +94,9 @@ def _translate_and_repair(
     emit: EmitFn | None = None,
     stop_event: Event | None = None,
     review: TranslationReview | None = None,
-    *,
-    reference_context: str = "",
 ) -> list[Cue]:
     translated = _translate_cues(
-        cues, workspace, settings, emit=emit, stop_event=stop_event,
-        reference_context=reference_context,
+        cues, workspace, settings, emit=emit, stop_event=stop_event
     )
     raise_if_cancelled(stop_event)
     if len(translated) != len(cues):
@@ -149,7 +142,6 @@ def _translate_and_repair(
                 retried = _translate_cues(
                     [cues[index]], workspace / "translation_retry" / f"round_{attempt}" / f"cue_{index + 1}",
                     retry_settings, emit=emit, stop_event=stop_event,
-                    reference_context=reference_context,
                 )
                 raise_if_cancelled(stop_event)
             except TaskCancelled:
@@ -188,8 +180,6 @@ def _translate_cues(
     settings: AppSettings,
     emit: EmitFn | None = None,
     stop_event: Event | None = None,
-    *,
-    reference_context: str = "",
 ) -> list[Cue]:
     ensure_galtransl_path()
     # GalTransl temporarily changes cwd to its own package directory. Resolve
@@ -213,7 +203,7 @@ def _translate_cues(
         logging.getLogger("GalTransl").addHandler(handler)
     try:
         with galtransl_cwd():
-            state = asyncio.run(_run_job(workspace, settings, stop_event, reference_context))
+            state = asyncio.run(_run_job(workspace, settings, stop_event))
     finally:
         if handler:
             logging.getLogger("GalTransl").removeHandler(handler)
@@ -234,14 +224,13 @@ def _translate_cues(
     return _merge_translation_items(items, cues)
 
 
-async def _run_job(workspace: Path, settings: AppSettings, stop_event, reference_context: str = ""):
+async def _run_job(workspace: Path, settings: AppSettings, stop_event):
     from GalTransl.Service import JobSpec, run_job_async
 
     spec = JobSpec(
         project_dir=str(workspace),
         translator=settings.translate.translator or "ForGal-json",
         config_file_name="config.yaml",
-        reference_context=reference_context,
     )
     return await run_job_async(spec, stop_event=stop_event)
 

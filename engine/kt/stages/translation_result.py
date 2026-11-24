@@ -49,7 +49,11 @@ def merge_translation_items(items: list[dict], cues: list[Cue]) -> list[Cue]:
         used.add(match)
         message = item.get("message")
         if isinstance(message, str):
-            out[match].message = message
+            # GalTransl can write a failed row as a marker followed by source
+            # text, which would otherwise look translated in some languages.
+            failed = message.startswith(("(Failed)", "(翻译失败)"))
+            if not failed or cues[match].message.startswith(("(Failed)", "(翻译失败)")):
+                out[match].message = message
     return out
 
 

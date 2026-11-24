@@ -295,6 +295,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get llamaModelHint => 'bin/llama 下的 GGUF 文件名';
 
   @override
+  String get llamaContextSize => '上下文长度（token）';
+
+  @override
+  String get llamaContextSizeHint => '留空使用默认值，0 使用模型设置';
+
+  @override
+  String get llamaGpuLayers => 'GPU 层数';
+
+  @override
+  String get llamaGpuLayersHint => '留空使用默认值，0 使用 CPU';
+
+  @override
+  String get invalidLlamaLaunchOption =>
+      '上下文长度和 GPU 层数须为 0 到 2147483647 的整数，也可留空。';
+
+  @override
   String get fixedPort => '固定端口';
 
   @override
@@ -804,7 +820,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get remoteUsernameColon => '远程用户名不能包含冒号';
 
   @override
-  String get remoteCredentialsReset => '远程账密已重置为 admin / kikoeta';
+  String get remoteCredentialsReset => '远程账密已重置';
 
   @override
   String get toolsRefreshed => '已刷新工具检测';
@@ -904,7 +920,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get password => '密码';
 
   @override
-  String get resetRemoteCredentials => '重置默认账密';
+  String get resetRemoteCredentials => '重置远程账密';
 
   @override
   String get reset => '重置';
@@ -1040,6 +1056,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get engineScriptNotFound => '未找到 engine/server.py';
+
+  @override
+  String enginePortUnavailable(int port) {
+    return '引擎无法使用本地端口 $port。请释放该端口后重试。';
+  }
 
   @override
   String pythonStartFailed(Object arg1) {
@@ -1629,6 +1650,22 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get llamaModelHint => 'bin/llama 下的 GGUF 檔名';
 
   @override
+  String get llamaContextSize => '上下文長度（token）';
+
+  @override
+  String get llamaContextSizeHint => '留空使用預設值，0 使用模型設定';
+
+  @override
+  String get llamaGpuLayers => 'GPU 層數';
+
+  @override
+  String get llamaGpuLayersHint => '留空使用預設值，0 使用 CPU';
+
+  @override
+  String get invalidLlamaLaunchOption =>
+      '上下文長度和 GPU 層數須為 0 到 2147483647 的整數，也可留空。';
+
+  @override
   String get fixedPort => '固定埠';
 
   @override
@@ -2138,7 +2175,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get remoteUsernameColon => '遠端使用者名稱不能包含冒號';
 
   @override
-  String get remoteCredentialsReset => '遠端賬密已重置為 admin / kikoeta';
+  String get remoteCredentialsReset => '遠端帳密已重設';
 
   @override
   String get toolsRefreshed => '已重新整理工具檢測';
@@ -2238,7 +2275,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get password => '密碼';
 
   @override
-  String get resetRemoteCredentials => '重置預設賬密';
+  String get resetRemoteCredentials => '重設遠端帳密';
 
   @override
   String get reset => '重置';
@@ -2374,6 +2411,11 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get engineScriptNotFound => '未找到 engine/server.py';
+
+  @override
+  String enginePortUnavailable(int port) {
+    return '引擎無法使用本機連接埠 $port。請釋放該連接埠後重試。';
+  }
 
   @override
   String pythonStartFailed(Object arg1) {

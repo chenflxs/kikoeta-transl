@@ -23,6 +23,8 @@ class _ModelsPageState extends State<ModelsPage> {
   late final TextEditingController asrBackend;
   late final TextEditingController asrLang;
   late final TextEditingController llamaModel;
+  late final TextEditingController llamaCtxSize;
+  late final TextEditingController llamaGpuLayers;
   late final TextEditingController correctBase;
   late final TextEditingController correctModel;
   late final TextEditingController correctKey;
@@ -61,6 +63,10 @@ class _ModelsPageState extends State<ModelsPage> {
       text: '${s['source_lang'] ?? asr['language'] ?? 'ja'}',
     );
     llamaModel = TextEditingController(text: '${s['llama_model'] ?? ''}');
+    llamaCtxSize = TextEditingController(text: '${s['llama_ctx_size'] ?? ''}');
+    llamaGpuLayers = TextEditingController(
+      text: '${s['llama_gpu_layers'] ?? ''}',
+    );
     correctProvider = _provider('${correct['provider'] ?? 'online'}');
     translateProvider = _provider('${translate['provider'] ?? 'online'}');
     indexModelCompat = translate['index_compat'] == true;
@@ -96,6 +102,8 @@ class _ModelsPageState extends State<ModelsPage> {
       'asrBackend': '${asr['backend'] ?? 'qwen3-1.7b'}',
       'asrLang': '${s['source_lang'] ?? asr['language'] ?? 'ja'}',
       'llamaModel': '${s['llama_model'] ?? ''}',
+      'llamaCtxSize': '${s['llama_ctx_size'] ?? ''}',
+      'llamaGpuLayers': '${s['llama_gpu_layers'] ?? ''}',
       'correctProvider': _provider('${correct['provider'] ?? 'online'}'),
       'correctBase': '${correct['base_url'] ?? ''}',
       'correctModel': '${correct['model'] ?? ''}',
@@ -121,6 +129,8 @@ class _ModelsPageState extends State<ModelsPage> {
       asrBackend.text = merged.values['asrBackend'] as String;
       asrLang.text = merged.values['asrLang'] as String;
       llamaModel.text = merged.values['llamaModel'] as String;
+      llamaCtxSize.text = merged.values['llamaCtxSize'] as String;
+      llamaGpuLayers.text = merged.values['llamaGpuLayers'] as String;
       correctProvider = merged.values['correctProvider'] as String;
       correctBase.text = merged.values['correctBase'] as String;
       correctModel.text = merged.values['correctModel'] as String;
@@ -142,6 +152,8 @@ class _ModelsPageState extends State<ModelsPage> {
     'asrBackend': asrBackend.text,
     'asrLang': asrLang.text,
     'llamaModel': llamaModel.text,
+    'llamaCtxSize': llamaCtxSize.text,
+    'llamaGpuLayers': llamaGpuLayers.text,
     'correctProvider': correctProvider,
     'correctBase': correctBase.text,
     'correctModel': correctModel.text,
@@ -166,6 +178,8 @@ class _ModelsPageState extends State<ModelsPage> {
     asrBackend.dispose();
     asrLang.dispose();
     llamaModel.dispose();
+    llamaCtxSize.dispose();
+    llamaGpuLayers.dispose();
     correctBase.dispose();
     correctModel.dispose();
     correctKey.dispose();
@@ -230,9 +244,29 @@ class _ModelsPageState extends State<ModelsPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  int? _llamaInteger(TextEditingController controller) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return null;
+    final value = int.tryParse(text, radix: 10);
+    if (value == null || value < 0 || value > 2147483647) {
+      throw FormatException(context.l10n.invalidLlamaLaunchOption);
+    }
+    return value;
+  }
+
   Future<void> _save({bool auto = false}) async {
     final draft = _draft();
     if (auto && draft == _savedDraft) return;
+    final int? ctxSize;
+    final int? gpuLayers;
+    try {
+      ctxSize = _llamaInteger(llamaCtxSize);
+      gpuLayers = _llamaInteger(llamaGpuLayers);
+    } on FormatException catch (error) {
+      if (auto) rethrow;
+      _toast(error.message);
+      return;
+    }
     final sourceLanguage = asrLang.text.trim();
     final targetLanguage = targetLang.text.trim();
     final llama = llamaModel.text.trim();
@@ -253,6 +287,8 @@ class _ModelsPageState extends State<ModelsPage> {
       next['source_lang'] = sourceLanguage;
       next['target_lang'] = targetLanguage;
       next['llama_model'] = llama;
+      next['llama_ctx_size'] = ctxSize;
+      next['llama_gpu_layers'] = gpuLayers;
       next['asr'] = {
         ...(next['asr'] as Map? ?? {}),
         'model': model,
@@ -515,6 +551,18 @@ class _ModelsPageState extends State<ModelsPage> {
                   options: llamaModels,
                   labels: llamaLabels,
                   onChanged: (_) => setState(() {}),
+                ),
+                KtField(
+                  controller: llamaCtxSize,
+                  label: context.l10n.llamaContextSize,
+                  hint: context.l10n.llamaContextSizeHint,
+                  keyboardType: TextInputType.number,
+                ),
+                KtField(
+                  controller: llamaGpuLayers,
+                  label: context.l10n.llamaGpuLayers,
+                  hint: context.l10n.llamaGpuLayersHint,
+                  keyboardType: TextInputType.number,
                 ),
                 KtRow(
                   icon: Icons.lan_outlined,

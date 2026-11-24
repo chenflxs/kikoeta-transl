@@ -298,6 +298,23 @@ class AppLocalizationsRu extends AppLocalizations {
   String get llamaModelHint => 'Имя файла GGUF в bin/llama';
 
   @override
+  String get llamaContextSize => 'Размер контекста (токены)';
+
+  @override
+  String get llamaContextSizeHint =>
+      'Пустое поле — по умолчанию, 0 — из модели';
+
+  @override
+  String get llamaGpuLayers => 'Слои на GPU';
+
+  @override
+  String get llamaGpuLayersHint => 'Пустое поле — по умолчанию, 0 — на CPU';
+
+  @override
+  String get invalidLlamaLaunchOption =>
+      'Укажите целые числа от 0 до 2147483647 или оставьте поля пустыми.';
+
+  @override
   String get fixedPort => 'Фиксированный порт';
 
   @override
@@ -829,8 +846,7 @@ class AppLocalizationsRu extends AppLocalizations {
       'Логин удалённого доступа не может содержать двоеточие';
 
   @override
-  String get remoteCredentialsReset =>
-      'Данные удалённого доступа сброшены: admin / kikoeta';
+  String get remoteCredentialsReset => 'Данные удалённого доступа сброшены';
 
   @override
   String get toolsRefreshed => 'Обнаружение инструментов обновлено';
@@ -1073,6 +1089,11 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get engineScriptNotFound => 'Файл engine/server.py не найден';
+
+  @override
+  String enginePortUnavailable(int port) {
+    return 'Движок не может использовать локальный порт $port. Освободите порт и повторите попытку.';
+  }
 
   @override
   String pythonStartFailed(Object arg1) {

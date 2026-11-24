@@ -297,6 +297,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get llamaModelHint => 'GGUF filename under bin/llama';
 
   @override
+  String get llamaContextSize => 'Context size (tokens)';
+
+  @override
+  String get llamaContextSizeHint =>
+      'Blank uses the default. 0 uses the model setting.';
+
+  @override
+  String get llamaGpuLayers => 'GPU layers';
+
+  @override
+  String get llamaGpuLayersHint => 'Blank uses the default. 0 uses the CPU.';
+
+  @override
+  String get invalidLlamaLaunchOption =>
+      'Context size and GPU layers must be whole numbers from 0 to 2147483647, or blank.';
+
+  @override
   String get fixedPort => 'Fixed port';
 
   @override
@@ -820,8 +837,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get remoteUsernameColon => 'Remote username cannot contain a colon';
 
   @override
-  String get remoteCredentialsReset =>
-      'Remote credentials reset to admin / kikoeta';
+  String get remoteCredentialsReset => 'Remote credentials reset';
 
   @override
   String get toolsRefreshed => 'Tool detection refreshed';
@@ -923,7 +939,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get password => 'Password';
 
   @override
-  String get resetRemoteCredentials => 'Reset default credentials';
+  String get resetRemoteCredentials => 'Reset remote credentials';
 
   @override
   String get reset => 'Reset';
@@ -1065,6 +1081,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get engineScriptNotFound => 'engine/server.py not found';
+
+  @override
+  String enginePortUnavailable(int port) {
+    return 'The engine cannot use local port $port. Free the port and try again.';
+  }
 
   @override
   String pythonStartFailed(Object arg1) {

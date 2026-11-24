@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -103,7 +104,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  Future<void> _persistPaths() async {
+  Future<String> _persistPaths() async {
     final ffmpegPath = ffmpeg.text.trim();
     final crispasrPath = crispasr.text.trim();
     final proxyUrl = proxy.text.trim();
@@ -120,6 +121,11 @@ class _SettingsPageState extends State<SettingsPage> {
       next['remote_username'] = username;
       next['remote_password'] = password;
     });
+    final savedPassword = widget.app.settings['remote_password'] as String;
+    if (mounted && remotePassword.text == password) {
+      remotePassword.text = savedPassword;
+    }
+    return savedPassword;
   }
 
   String get themeMode {
@@ -164,22 +170,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveNow({required bool auto}) async {
-    final draft = _draft();
-    if (auto && draft == _savedDraft) return;
+    final draft = _draftValues();
+    if (auto && jsonEncode(draft) == _savedDraft) return;
     if (!_validRemoteCredentials(showMessage: !auto)) {
       if (auto) throw StateError(appL10n.invalidRemoteCredentials);
       return;
     }
     final previousRemoteAccess = widget.app.settings['remote_access'] == true;
-    await _persistPaths();
+    draft['remote_password'] = await _persistPaths();
     await widget.app.reload();
-    if (previousRemoteAccess != remoteAccess) {
+    if (previousRemoteAccess != draft['remote_access']) {
       await widget.app.restartEngine();
       if (!widget.app.engineOnline) {
         throw StateError(appL10n.remoteRestartFailed);
       }
     }
-    _savedDraft = draft;
+    _savedDraft = jsonEncode(draft);
     if (!auto && mounted) {
       setState(() {});
       ScaffoldMessenger.of(
@@ -210,13 +216,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _resetRemoteCredentials() async {
-    remoteUsername.text = 'admin';
-    remotePassword.text = 'kikoeta';
     await widget.app.updateSettings((next) {
       next['remote_username'] = 'admin';
       next['remote_password'] = 'kikoeta';
     });
     if (!mounted) return;
+    remoteUsername.text = widget.app.settings['remote_username'] as String;
+    remotePassword.text = widget.app.settings['remote_password'] as String;
     setState(() {});
     ScaffoldMessenger.of(
       context,
@@ -539,11 +545,16 @@ class _SettingsPageState extends State<SettingsPage> {
               controller: remotePassword,
               label: context.l10n.password,
               obscure: true,
+              suffixIcon: IconButton(
+                tooltip: MaterialLocalizations.of(context).copyButtonLabel,
+                icon: const Icon(Icons.copy_outlined, size: 18),
+                onPressed: () =>
+                    Clipboard.setData(ClipboardData(text: remotePassword.text)),
+              ),
             ),
             KtRow(
               icon: Icons.restore,
               title: context.l10n.resetRemoteCredentials,
-              sub: 'admin / kikoeta',
               trailing: TextButton(
                 onPressed: _resetRemoteCredentials,
                 child: Text(context.l10n.reset),

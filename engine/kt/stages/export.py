@@ -12,6 +12,15 @@ from ..models import (
 )
 
 
+def language_suffix(language: str) -> str:
+    value = str(language or "").strip().lower().replace("_", "-")
+    if value in {"zh", "zh-cn", "zh-hans", "zh-hans-cn"}:
+        return ".zh"
+    if value in {"zh-tw", "zh-hant", "zh-hant-tw"}:
+        return ".zh-tw"
+    return "." + (value or "target")
+
+
 def export_cues(
     cues: list[Cue],
     source_path: str | Path,

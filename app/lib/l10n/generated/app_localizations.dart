@@ -572,6 +572,36 @@ abstract class AppLocalizations {
   /// **'bin/llama 下的 GGUF 文件名'**
   String get llamaModelHint;
 
+  /// No description provided for @llamaContextSize.
+  ///
+  /// In zh, this message translates to:
+  /// **'上下文长度（token）'**
+  String get llamaContextSize;
+
+  /// No description provided for @llamaContextSizeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留空使用默认值，0 使用模型设置'**
+  String get llamaContextSizeHint;
+
+  /// No description provided for @llamaGpuLayers.
+  ///
+  /// In zh, this message translates to:
+  /// **'GPU 层数'**
+  String get llamaGpuLayers;
+
+  /// No description provided for @llamaGpuLayersHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留空使用默认值，0 使用 CPU'**
+  String get llamaGpuLayersHint;
+
+  /// No description provided for @invalidLlamaLaunchOption.
+  ///
+  /// In zh, this message translates to:
+  /// **'上下文长度和 GPU 层数须为 0 到 2147483647 的整数，也可留空。'**
+  String get invalidLlamaLaunchOption;
+
   /// No description provided for @fixedPort.
   ///
   /// In zh, this message translates to:
@@ -1541,7 +1571,7 @@ abstract class AppLocalizations {
   /// No description provided for @remoteCredentialsReset.
   ///
   /// In zh, this message translates to:
-  /// **'远程账密已重置为 admin / kikoeta'**
+  /// **'远程账密已重置'**
   String get remoteCredentialsReset;
 
   /// No description provided for @toolsRefreshed.
@@ -1721,7 +1751,7 @@ abstract class AppLocalizations {
   /// No description provided for @resetRemoteCredentials.
   ///
   /// In zh, this message translates to:
-  /// **'重置默认账密'**
+  /// **'重置远程账密'**
   String get resetRemoteCredentials;
 
   /// No description provided for @reset.
@@ -1981,6 +2011,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'未找到 engine/server.py'**
   String get engineScriptNotFound;
+
+  /// No description provided for @enginePortUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'引擎无法使用本地端口 {port}。请释放该端口后重试。'**
+  String enginePortUnavailable(int port);
 
   /// No description provided for @pythonStartFailed.
   ///

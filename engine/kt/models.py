@@ -253,6 +253,8 @@ class AppSettings:
     dict_pre: str = ""
     dict_gpt: str = ""
     dict_after: str = ""
+    llama_ctx_size: int | None = None
+    llama_gpu_layers: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -275,6 +277,8 @@ class AppSettings:
             crispasr_dir=str(raw.get("crispasr_dir") or ""),
             llama_dir=str(raw.get("llama_dir") or ""),
             llama_model=str(raw.get("llama_model") or ""),
+            llama_ctx_size=_optional_llama_int(raw.get("llama_ctx_size")),
+            llama_gpu_layers=_optional_llama_int(raw.get("llama_gpu_layers")),
             proxy=str(raw["proxy"] if "proxy" in raw else "http://127.0.0.1:7890"),
             theme=str(raw.get("theme") or "system"),
             ui_language=(
@@ -494,6 +498,16 @@ def _as_int(value: Any, default: int) -> int:
         return int(float(value))
     except (TypeError, ValueError):
         return default
+
+
+def _optional_llama_int(value: Any) -> int | None:
+    if type(value) is not int and not isinstance(value, str):
+        return None
+    try:
+        number = int(value)
+    except ValueError:
+        return None
+    return number if 0 <= number <= 2_147_483_647 else None
 
 
 def _output_from_dict(output: dict[str, Any], formats: list[Any]) -> OutputSettings:

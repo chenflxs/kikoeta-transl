@@ -11,8 +11,9 @@ from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from .models import OutputSettings
 from .kikoeta_cache import read_cached_lyric
+from .models import OutputSettings
+from .stages.export import language_suffix
 
 
 _WORK_ID = re.compile(r"(?:RJ|VJ|BJ)[0-9]+", re.IGNORECASE)
@@ -26,14 +27,15 @@ def _safe_part(value: str) -> str:
     return _INVALID_PART.sub("_", value).rstrip(". ").strip()
 
 
-def lyric_path(track_path: str, extension: str) -> str:
+def lyric_path(track_path: str, extension: str, target_lang: str) -> str:
     """Match Kikoeta's track-to-lyrics path, without the work ID prefix."""
     parts = [_safe_part(part) for part in track_path.replace("\\", "/").split("/")
              if part and part not in {".", ".."}]
     parts = [part for part in parts if part]
     leaf = parts.pop() if parts else "track"
     stem = leaf.rsplit(".", 1)[0] if "." in leaf[1:] else leaf
-    parts.append(f"{stem or 'track'}.zh{extension}")
+    suffix = _safe_part(language_suffix(target_lang)) or ".target"
+    parts.append(f"{stem or 'track'}{suffix}{extension}")
     return "/".join(parts)
 
 
@@ -78,11 +80,11 @@ def sync_cached_lyric(job_id: str, index: int, output: OutputSettings) -> None:
     """Explicit uploads do not depend on the automatic sync switch."""
     endpoint = _endpoint(output.lls_url)
     authorization = _authorization(output)
-    work_id, track_path, content = read_cached_lyric(job_id, index)
+    work_id, track_path, target_lang, content = read_cached_lyric(job_id, index)
     work_id = work_id.strip().upper()
     if not _WORK_ID.fullmatch(work_id):
         raise ValueError("缓存缺少有效的 RJ/VJ/BJ 作品号，无法推送到 LLS")
-    _upload_lyric(endpoint, authorization, work_id, lyric_path(track_path, ".lrc"), content)
+    _upload_lyric(endpoint, authorization, work_id, lyric_path(track_path, ".lrc", target_lang), content)
 
 
 def sync_completed_job(job: Any, output: OutputSettings) -> int:
@@ -105,7 +107,7 @@ def sync_completed_job(job: Any, output: OutputSettings) -> int:
             extension = source.suffix.lower()
             if extension not in _LYRIC_EXTS or not source.is_file():
                 continue
-            relative_path = lyric_path(track_path, extension)
+            relative_path = lyric_path(track_path, extension, job.settings.target_lang)
             if relative_path in used_paths:
                 relative_path = relative_path[: -len(extension)] + f"-{len(used_paths)}{extension}"
             used_paths.add(relative_path)

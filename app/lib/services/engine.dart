@@ -28,21 +28,27 @@ class EngineClient {
   Process? _process;
   Timer? _heartbeatTimer;
   bool _heartbeatInFlight = false;
+  bool _attached = false;
   Future<void>? _shutdownFuture;
   http.Client? _eventsClient;
   String? startupError;
   final StringBuffer _startupOutput = StringBuffer();
   static const int port = 18765;
+  static const int _minimumEngineRevision = 8;
 
   Uri _uri(String path, [Map<String, String>? query]) =>
       Uri.parse('$baseUrl$path').replace(queryParameters: query);
 
-  Future<bool> health() async {
+  Future<bool> health({Duration timeout = const Duration(seconds: 2)}) async {
     try {
-      final res = await http
-          .get(_uri('/api/health'))
-          .timeout(const Duration(seconds: 2));
-      return res.statusCode == 200;
+      final res = await http.get(_uri('/api/health')).timeout(timeout);
+      if (res.statusCode != 200) return false;
+      final payload = _decode(res);
+      final revision = payload['revision'];
+      return payload['ok'] == true &&
+          payload['name'] == 'kikoeta-transl' &&
+          revision is int &&
+          revision >= _minimumEngineRevision;
     } catch (_) {
       return false;
     }
@@ -51,10 +57,12 @@ class EngineClient {
   Future<bool> ensureStarted() async {
     startupError = null;
     if (await health()) {
+      _attached = _process == null;
       _startHeartbeat();
       return true;
     }
-    await _freeEnginePort();
+    _attached = false;
+    if (Platform.isWindows && !await _enginePortAvailable()) return false;
     final python = _python();
     final server = _serverPath();
     if (python == null) {
@@ -127,12 +135,16 @@ class EngineClient {
     _stopHeartbeat();
     _cancelEventsRequest();
     final process = _process;
-    try {
-      await http
-          .post(_uri('/api/shutdown'))
-          .timeout(const Duration(seconds: 2));
-    } catch (_) {
-      // The process may already be stopping or the HTTP listener may be gone.
+    final attached = _attached;
+    _attached = false;
+    if ((process != null || attached) && await health()) {
+      try {
+        await http
+            .post(_uri('/api/shutdown'))
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {
+        // The process may already be stopping or the HTTP listener may be gone.
+      }
     }
     _process = null;
     if (process == null) return;
@@ -152,28 +164,21 @@ class EngineClient {
     }
   }
 
-  Future<void> _freeEnginePort() async {
-    if (!Platform.isWindows) return;
+  Future<bool> _enginePortAvailable() async {
     try {
-      final result = await Process.run('netstat', [
-        '-ano',
-        '-p',
-        'tcp',
-      ], runInShell: true);
-      final re = RegExp(
-        r'^\s*TCP\s+(?:127\.0\.0\.1|0\.0\.0\.0):18765\s+\S+\s+LISTENING\s+(\d+)\s*$',
-        caseSensitive: false,
-        multiLine: true,
+      // The engine binds the port itself. Probe for an active listener so
+      // connections lingering after a restart do not cause a false conflict.
+      final socket = await Socket.connect(
+        InternetAddress.loopbackIPv4,
+        port,
+        timeout: const Duration(milliseconds: 300),
       );
-      final pids = <String>{};
-      for (final match in re.allMatches(result.stdout.toString())) {
-        final pid = match.group(1);
-        if (pid != null && pid != '0') pids.add(pid);
-      }
-      for (final pid in pids) {
-        await Process.run('taskkill', ['/F', '/PID', pid], runInShell: true);
-      }
-    } catch (_) {}
+      socket.destroy();
+    } on SocketException {
+      return true;
+    }
+    startupError = appL10n.enginePortUnavailable(port);
+    return false;
   }
 
   void _watchProcess(Process process) {
@@ -223,15 +228,17 @@ class EngineClient {
     _cancelEventsRequest();
     final process = _process;
     _process = null;
+    final attached = _attached;
+    _attached = false;
 
     if (process == null) {
       // This client may have attached to an already-running engine, in which
       // case no Process handle is available. Ask it to stop and rely on its
       // heartbeat watchdog if the request cannot be delivered in time.
+      final timeout = const Duration(milliseconds: 250);
+      if (!attached || !await health(timeout: timeout)) return;
       try {
-        await http
-            .post(_uri('/api/shutdown'))
-            .timeout(const Duration(milliseconds: 250));
+        await http.post(_uri('/api/shutdown')).timeout(timeout);
       } catch (_) {}
       return;
     }

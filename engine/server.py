@@ -4,6 +4,7 @@ import argparse
 import base64
 import hmac
 import json
+import re
 import sys
 import threading
 import time
@@ -22,17 +23,20 @@ from kt.lls_sync import sync_cached_lyric
 from kt.cleanup import cleanup_intermediates
 from kt.download import download_http_file
 from kt.crispasr_update import CrispAsrUpdater, local_status as crispasr_status
-from kt.models import AppSettings, JobRequest, StageFlags
+from kt.models import AppSettings, JobRequest, OUTPUT_PRESETS, StageFlags
 from kt.recent import (
     delete_all_recent_jobs,
     delete_recent_job,
     delete_translation_cache,
     list_recent_jobs,
 )
-from kt.settings import load_settings, save_settings
+from kt.settings import DEFAULT_REMOTE_PASSWORD, load_settings, save_settings
 from kt.stages.correct import test_correct
 from kt.llama_runtime import LLAMA_RUNTIME
-from kt.tools import catalog, list_crispasr_models, list_llama_models, list_openai_models, resolve_ffmpeg
+from kt.tools import (
+    SOURCE_LANGS, TARGET_LANGS, catalog, list_crispasr_models,
+    list_llama_models, list_openai_models, resolve_ffmpeg,
+)
 from kt.paths import WORK_DIR
 
 
@@ -41,6 +45,15 @@ CRISPASR_UPDATER = CrispAsrUpdater(MANAGER.tool_update_guard)
 HOST = "127.0.0.1"
 PORT = 18765
 PUBLIC_PORT = 2370
+API_REVISION = 8
+CONTROL_JSON_MAX_BYTES = 2 * 1024 * 1024
+REMOTE_JOB_JSON_MAX_BYTES = 64 * 1024 * 1024
+JSON_READ_TIMEOUT_SECONDS = 30
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
+_REMOTE_LANGUAGE_VALUES = {
+    "source_lang": {value["id"] for value in SOURCE_LANGS},
+    "target_lang": {value["id"] for value in TARGET_LANGS},
+}
 _LOCAL_SERVER: ThreadingHTTPServer | None = None
 _PUBLIC_SERVER: ThreadingHTTPServer | None = None
 _CLIENT_LAST_SEEN: float | None = None
@@ -65,9 +78,6 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
 
-    def do_OPTIONS(self) -> None:
-        self._send(204, b"", content_type="text/plain")
-
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
@@ -75,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allow_request(path):
             return
         if path == "/api/v1/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 7, "service": "remote"})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": API_REVISION, "service": "remote"})
             return
         if path == "/api/v1/cache":
             self._remote_cache_list()
@@ -87,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
             self._remote_job_get(path, query)
             return
         if path == "/api/health":
-            self._json({"ok": True, "name": "kikoeta-transl", "revision": 7})
+            self._json({"ok": True, "name": "kikoeta-transl", "revision": API_REVISION})
             return
         if path == "/api/client-heartbeat":
             self._heartbeat()
@@ -151,6 +161,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/settings":
             payload = self._read_json()
+            if payload is None:
+                return
             settings = AppSettings.from_dict(payload)
             save_settings(settings)
             self._json(settings.to_dict())
@@ -187,6 +199,8 @@ class Handler(BaseHTTPRequestHandler):
                     payload = CRISPASR_UPDATER.cancel()
                 else:
                     body = self._read_json()
+                    if body is None:
+                        return
                     with MANAGER.tool_update_guard():
                         pass
                     payload = CRISPASR_UPDATER.start(load_settings(), int(body["asset_id"]))
@@ -211,18 +225,24 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/jobs":
             cleanup_paths: list[str] = []
             try:
-                payload = self._read_json()
-                files, cleanup_paths = _materialize_remote_files(payload.get("files") or [])
+                payload = self._read_json(REMOTE_JOB_JSON_MAX_BYTES)
+                if payload is None:
+                    return
+                override = _remote_settings_override(payload.get("settings"))
+                cache_context = _remote_cache_context(payload)
                 flags_raw = payload.get("flags") or {}
+                if not isinstance(flags_raw, dict):
+                    raise ValueError("flags must be an object")
+                files, cleanup_paths = _materialize_remote_files(payload.get("files"))
                 request = JobRequest(
                     files=files,
                     flags=StageFlags(
                         enable_correct=True,
                         enable_translate=bool(flags_raw.get("enable_translate", True)),
                     ),
-                    settings_override=payload.get("settings") or {},
+                    settings_override=override,
                     cleanup_paths=cleanup_paths,
-                    cache_context=_remote_cache_context(payload),
+                    cache_context=cache_context,
                 )
                 job = MANAGER.create(
                     request, source="kikoeta",
@@ -232,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
                 cleanup_intermediates(*cleanup_paths)
                 self._error(409, str(exc))
                 return
-            except (ValueError, OSError, TypeError, base64.binascii.Error) as exc:
+            except (ValueError, OSError, TypeError) as exc:
                 cleanup_intermediates(*cleanup_paths)
                 self._error(400, str(exc))
                 return
@@ -242,6 +262,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/jobs":
             payload = self._read_json()
+            if payload is None:
+                return
             flags_raw = payload.get("flags") or {}
             additional_context = payload.get("additional_context", "")
             if not isinstance(additional_context, str):
@@ -292,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/models/openai":
             try:
                 payload = self._read_json()
+                if payload is None:
+                    return
                 settings = load_settings()
                 kind = str(payload.get("kind") or "")
                 if kind == "correct":
@@ -329,7 +353,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # Drain the POST body before replying. Closing an HTTP/1.0 socket
             # with unread incoming bytes can reset an otherwise valid response.
-            self._read_json()
+            if self._read_json() is None:
+                return True
+            if remote:
+                existing = MANAGER.get(job_id)
+                if existing is None or existing.source != "kikoeta":
+                    raise KeyError(job_id)
             if action == "preempt":
                 job = MANAGER.preempt(job_id)
             elif action == "resume":
@@ -352,7 +381,7 @@ class Handler(BaseHTTPRequestHandler):
             self._error(404, "job not found")
             return
         job = MANAGER.get(parts[4])
-        if job is None:
+        if job is None or job.source != "kikoeta":
             self._error(404, "job not found")
             return
         if len(parts) == 5:
@@ -466,23 +495,70 @@ class Handler(BaseHTTPRequestHandler):
         events, cursor, closed = job.bus.listen(after=after, timeout=20)
         self._json({"events": events, "cursor": cursor, "closed": closed})
 
-    def _read_json(self) -> dict:
-        length = int(self.headers.get("content-length") or 0)
-        if length <= 0:
+    def _read_json(self, limit: int = CONTROL_JSON_MAX_BYTES) -> dict | None:
+        lengths = self.headers.get_all("content-length", [])
+        if self.headers.get("transfer-encoding") is not None or len(lengths) > 1:
+            self._error(400, "expected a single Content-Length without Transfer-Encoding")
+            return None
+        if not lengths:
             return {}
-        raw = self.rfile.read(length)
-        if not raw:
+        try:
+            if re.fullmatch(r"[0-9]+", lengths[0].strip()) is None:
+                raise ValueError
+            length = int(lengths[0])
+        except ValueError:
+            self._error(400, "invalid Content-Length")
+            return None
+        if length > limit:
+            self._error(413, f"JSON request exceeds the {limit // (1024 * 1024)} MiB limit")
+            return None
+        if length == 0:
             return {}
-        return json.loads(raw.decode("utf-8"))
+        original_timeout = self.connection.gettimeout()
+        self.connection.settimeout(JSON_READ_TIMEOUT_SECONDS)
+        try:
+            raw = self.rfile.read(length)
+        except TimeoutError:
+            self._error(408, "timed out reading JSON request")
+            return None
+        finally:
+            self.connection.settimeout(original_timeout)
+        try:
+            if len(raw) != length:
+                raise ValueError
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError
+        except (ValueError, RecursionError):
+            self._error(400, "expected a complete JSON object")
+            return None
+        return data
 
     def _allow_request(self, path: str) -> bool:
-        is_public_service = self.server.server_address[1] == PUBLIC_PORT
+        if self.headers.get("origin") is not None:
+            self._error(403, "browser origins are not allowed")
+            return False
+        is_public_service = self.server is _PUBLIC_SERVER
+        if not is_public_service:
+            hosts = self.headers.get_all("host", [])
+            port = self.server.server_address[1]
+            allowed_hosts = {f"{host}:{port}" for host in _LOOPBACK_HOSTS}
+            if port == 80:
+                allowed_hosts.update(_LOOPBACK_HOSTS)
+            if len(hosts) != 1 or hosts[0].lower() not in allowed_hosts:
+                self._error(403, "invalid local engine host")
+                return False
         if is_public_service and not _is_remote_api_path(path):
             self._error(404, "not found")
             return False
         if not _is_remote_api_path(path):
             return True
         settings = load_settings()
+        if self.client_address[0] != HOST and (
+            not settings.remote_access or settings.remote_password == DEFAULT_REMOTE_PASSWORD
+        ):
+            self._error(403, "LAN remote access is disabled")
+            return False
         if _valid_remote_authorization(
             self.headers.get("authorization"),
             settings.remote_username,
@@ -527,9 +603,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(body)))
-        self.send_header("access-control-allow-origin", "*")
-        self.send_header("access-control-allow-methods", "GET,POST,PUT,OPTIONS")
-        self.send_header("access-control-allow-headers", "content-type, authorization")
         for key, value in (extra_headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -582,7 +655,7 @@ def _valid_remote_authorization(
     if not header or not header.lower().startswith("basic "):
         return False
     try:
-        encoded = header.split(None, 1)[1].strip()
+        encoded = header[6:].strip()
         decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
         supplied_username, separator, supplied_password = decoded.partition(":")
         if not separator:
@@ -605,7 +678,7 @@ def _is_remote_api_path(path: str) -> bool:
 def main() -> None:
     global _LOCAL_SERVER, _PUBLIC_SERVER, _CLIENT_LAST_SEEN
     parser = argparse.ArgumentParser(description="Kikoeta Transl engine")
-    parser.add_argument("--host", default=HOST)
+    parser.add_argument("--host", default=HOST, choices=sorted(_LOOPBACK_HOSTS))
     parser.add_argument("--port", type=int, default=PORT)
     args = parser.parse_args()
     server = _EngineHTTPServer((args.host, args.port), Handler)
@@ -615,7 +688,17 @@ def main() -> None:
     _CLIENT_WATCHDOG_STOP.clear()
     threading.Thread(target=_client_watchdog, daemon=True).start()
     settings = load_settings()
-    public_host = "0.0.0.0" if settings.remote_access else "127.0.0.1"
+    if settings.remote_access and settings.remote_password == DEFAULT_REMOTE_PASSWORD:
+        try:
+            settings = save_settings(settings)
+        except OSError as exc:
+            settings = load_settings()
+            print(f"could not rotate the default remote password: {exc}", file=sys.stderr, flush=True)
+    public_host = (
+        "0.0.0.0"
+        if settings.remote_access and settings.remote_password != DEFAULT_REMOTE_PASSWORD
+        else HOST
+    )
     try:
         public_server = _EngineHTTPServer((public_host, PUBLIC_PORT), Handler)
         _PUBLIC_SERVER = public_server
@@ -679,13 +762,13 @@ def _materialize_remote_files(items: object) -> tuple[list[str], list[str]]:
     cleanup_paths: list[str] = []
     try:
         for index, item in enumerate(items):
-            if isinstance(item, str) and item.strip():
-                paths.append(item)
-                continue
             if not isinstance(item, dict):
-                raise ValueError(f"invalid file at index {index}")
-            encoded = str(item.get("content_base64") or "")
-            source_url = str(item.get("url") or "").strip()
+                raise ValueError(f"file at index {index} must be an object containing content_base64 or url")
+            encoded = item.get("content_base64", "")
+            source_url = item.get("url", "")
+            if not isinstance(encoded, str) or not isinstance(source_url, str):
+                raise ValueError(f"content_base64 and url at index {index} must be strings")
+            source_url = source_url.strip()
             if bool(encoded) == bool(source_url):
                 raise ValueError(f"file at index {index} must provide exactly one of content_base64 or url")
             name = _remote_file_name(item.get("name"), source_url, index)
@@ -717,7 +800,32 @@ def _remote_file_name(value: object, source_url: str, index: int) -> str:
     name = Path(str(value or "")).name
     if not name and source_url:
         name = Path(unquote(urlparse(source_url).path)).name
-    return name or f"input_{index}"
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).rstrip(" .") or f"input_{index}"
+
+
+def _remote_settings_override(raw: object) -> dict:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("settings must be an object")
+    for key, value in raw.items():
+        if key in _REMOTE_LANGUAGE_VALUES:
+            if not isinstance(value, str) or value not in _REMOTE_LANGUAGE_VALUES[key]:
+                raise ValueError(f"unsupported {key}")
+        elif key == "output":
+            if not isinstance(value, dict):
+                raise ValueError("settings.output must be an object")
+            for field, option in value.items():
+                if field == "preset" and option in OUTPUT_PRESETS:
+                    continue
+                if field == "formats" and isinstance(option, list) and option in (["lrc"], ["srt"]):
+                    continue
+                if field == "bilingual" and isinstance(option, bool):
+                    continue
+                raise ValueError(f"unsupported output setting: {field}")
+        else:
+            raise ValueError(f"unsupported remote setting: {key}")
+    return raw
 
 
 def _remote_cache_context(payload: dict) -> dict[str, object]:

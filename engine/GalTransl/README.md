@@ -32,9 +32,7 @@ EPUB/MTool JSON/Translator++/MTBench 等当前音视频字幕流程不用的格�
 - 移除内置引擎的联网版本检测、后台更新线程、更新日志提示和 `/api/version/check` 接口；保留当前版本信息。
 - 任务结束关闭日志句柄。
 
-更新时应对照固定提交重新应用上述差异，并运行 `python engine/checks/galtransl_integration_check.py`。
-该测试使用本机模拟 OpenAI 接口检查完整翻译、时间轴、缓存续翻、请求参数、旧 TSV 和取消任务，
-无需访问付费模型。
+保留范围、本地补丁和更新验证见 [GalTransl 集成维护说明](../GALTRANSL_PATCHES.md)。
 
 ## 本次验证
 

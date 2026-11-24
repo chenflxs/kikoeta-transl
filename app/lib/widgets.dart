@@ -336,6 +336,8 @@ class KtField extends StatelessWidget {
   final String? hint;
   final bool obscure;
   final int maxLines;
+  final TextInputType? keyboardType;
+  final Widget? suffixIcon;
 
   const KtField({
     super.key,
@@ -344,6 +346,8 @@ class KtField extends StatelessWidget {
     this.hint,
     this.obscure = false,
     this.maxLines = 1,
+    this.keyboardType,
+    this.suffixIcon,
   });
 
   @override
@@ -355,8 +359,13 @@ class KtField extends StatelessWidget {
         controller: controller,
         obscureText: obscure,
         maxLines: obscure ? 1 : maxLines,
+        keyboardType: keyboardType,
         style: TextStyle(fontFamily: 'SarasaUI', fontSize: 13, color: p.text),
-        decoration: ktInputDecoration(context, label, hint: hint),
+        decoration: ktInputDecoration(
+          context,
+          label,
+          hint: hint,
+        ).copyWith(suffixIcon: suffixIcon),
       ),
     );
   }

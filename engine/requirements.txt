@@ -1,1 +1,11 @@
+# KT's direct third-party dependencies:
+# httpx: online correction (kt/stages/correct.py).
+httpx
+# PyYAML: per-job translation config (kt/stages/translate.py).
+# Requests: model-list discovery (kt/tools.py).
+# Both are also used and declared by the bundled GalTransl.
 -r GalTransl/requirements.txt
+
+# Subtitle parsing, ASR cleanup, job scheduling, and the local HTTP API
+# use the Python standard library. FFmpeg, CrispASR, and llama.cpp run
+# as separate executables, managed outside pip.

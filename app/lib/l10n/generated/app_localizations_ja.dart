@@ -295,6 +295,22 @@ class AppLocalizationsJa extends AppLocalizations {
   String get llamaModelHint => 'bin/llama 内の GGUF ファイル名';
 
   @override
+  String get llamaContextSize => 'コンテキスト長（トークン）';
+
+  @override
+  String get llamaContextSizeHint => '空欄で既定値、0 でモデルの設定を使用します';
+
+  @override
+  String get llamaGpuLayers => 'GPU レイヤー数';
+
+  @override
+  String get llamaGpuLayersHint => '空欄で既定値、0 で CPU を使用します';
+
+  @override
+  String get invalidLlamaLaunchOption =>
+      'コンテキスト長と GPU レイヤー数は、空欄にするか 0〜2147483647 の整数を入力してください。';
+
+  @override
   String get fixedPort => '固定ポート';
 
   @override
@@ -810,7 +826,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get remoteUsernameColon => 'リモートのユーザー名にコロンは使用できません';
 
   @override
-  String get remoteCredentialsReset => 'リモートの認証情報を admin / kikoeta に戻しました';
+  String get remoteCredentialsReset => 'リモート接続の認証情報をリセットしました';
 
   @override
   String get toolsRefreshed => 'ツール検出を更新しました';
@@ -910,7 +926,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get password => 'パスワード';
 
   @override
-  String get resetRemoteCredentials => '既定の認証情報に戻す';
+  String get resetRemoteCredentials => 'リモート接続の認証情報をリセット';
 
   @override
   String get reset => 'リセット';
@@ -1047,6 +1063,11 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get engineScriptNotFound => 'engine/server.py が見つかりません';
+
+  @override
+  String enginePortUnavailable(int port) {
+    return 'エンジンはローカルポート $port を使用できません。ポートを空けてから再試行してください。';
+  }
 
   @override
   String pythonStartFailed(Object arg1) {

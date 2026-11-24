@@ -262,6 +262,11 @@
   "localLlama": "本地 Llama",
   "localLlamaDescription": "本项目以单模型模式运行 llama-server，同一时间只挂载一个 GGUF 模型。矫正和翻译选择“本地”时，将共同使用此处选择的模型。切换模型后，llama-server 会在下一次本地任务开始前重新启动。",
   "llamaModelHint": "bin/llama 下的 GGUF 文件名",
+  "llamaContextSize": "上下文长度（token）",
+  "llamaContextSizeHint": "留空使用默认值，0 使用模型设置",
+  "llamaGpuLayers": "GPU 层数",
+  "llamaGpuLayersHint": "留空使用默认值，0 使用 CPU",
+  "invalidLlamaLaunchOption": "上下文长度和 GPU 层数须为 0 到 2147483647 的整数，也可留空。",
   "fixedPort": "固定端口",
   "correction": "矫正",
   "connectionMode": "连接方式",
@@ -518,7 +523,7 @@
   "settingsSaved": "设置已保存",
   "remoteCredentialsRequired": "远程用户名和密码不能为空",
   "remoteUsernameColon": "远程用户名不能包含冒号",
-  "remoteCredentialsReset": "远程账密已重置为 admin / kikoeta",
+  "remoteCredentialsReset": "远程账密已重置",
   "toolsRefreshed": "已刷新工具检测",
   "releaseMissingVersion": "GitHub Release 未提供版本号",
   "githubStatus": "GitHub 返回 {arg1}",
@@ -586,7 +591,7 @@
   "remoteAuthentication": "远程身份验证",
   "username": "用户名",
   "password": "密码",
-  "resetRemoteCredentials": "重置默认账密",
+  "resetRemoteCredentials": "重置远程账密",
   "reset": "重置",
   "about": "关于",
   "repository": "项目仓库",
@@ -649,6 +654,12 @@
   "noLogs": "尚无日志",
   "pythonNotFound": "未找到可用的 Python 3 解释器",
   "engineScriptNotFound": "未找到 engine/server.py",
+  "enginePortUnavailable": "引擎无法使用本地端口 {port}。请释放该端口后重试。",
+  "@enginePortUnavailable": {
+    "placeholders": {
+      "port": { "type": "int" }
+    }
+  },
   "pythonStartFailed": "无法启动 Python：{arg1}",
   "@pythonStartFailed": {
     "placeholders": {

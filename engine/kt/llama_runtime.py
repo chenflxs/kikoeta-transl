@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
+from typing import BinaryIO
 from urllib.request import ProxyHandler, build_opener
 
 from .cancellation import TaskCancelled, raise_if_cancelled, terminate_process
@@ -22,11 +25,63 @@ from .tools import (
 )
 
 
+@dataclass(frozen=True)
+class _Selection:
+    executable: Path
+    model_path: Path
+    ctx_size: int | None
+    gpu_layers: int | None
+
+    def command(self) -> list[str]:
+        command = [
+            str(self.executable),
+            "-m",
+            str(self.model_path),
+            "--host",
+            LOCAL_LLAMA_HOST,
+            "--port",
+            str(LOCAL_LLAMA_PORT),
+        ]
+        if self.ctx_size is not None:
+            command.extend(("--ctx-size", str(self.ctx_size)))
+        if self.gpu_layers is not None:
+            command.extend(("--gpu-layers", str(self.gpu_layers)))
+        return command
+
+
+class _StderrTail:
+    _LIMIT = 4096
+
+    def __init__(self, stream: BinaryIO) -> None:
+        self._lock = threading.Lock()
+        self._buffer = bytearray()
+        self._reader = threading.Thread(target=self._drain, args=(stream,), daemon=True)
+        self._reader.start()
+
+    def _drain(self, stream: BinaryIO) -> None:
+        with stream:
+            try:
+                while chunk := os.read(stream.fileno(), self._LIMIT):
+                    with self._lock:
+                        self._buffer.extend(chunk)
+                        del self._buffer[:-self._LIMIT]
+            except OSError:
+                pass
+
+    def describe(self, message: str) -> str:
+        # Allow the reader to consume the last bytes after process exit.
+        self._reader.join(timeout=0.25)
+        with self._lock:
+            tail = self._buffer.decode("utf-8", errors="replace").strip()
+        return f"{message}\n{tail}" if tail else message
+
+
 class LlamaRuntime:
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._process: subprocess.Popen[object] | None = None
-        self._model_path: Path | None = None
+        self._process: subprocess.Popen[bytes] | None = None
+        self._selection: _Selection | None = None
+        self._stderr: _StderrTail | None = None
         self._model_id = ""
         self._users = 0
         self._job_scopes = 0
@@ -55,16 +110,16 @@ class LlamaRuntime:
 
     def acquire(self, settings: AppSettings, stop_event: Event | None = None) -> str:
         with self._lock:
-            model_path, executable = self._resolve_selection(settings)
+            selection = self._resolve_selection(settings)
             self._refresh_process_state()
-            if self._process is not None and self._model_path != model_path:
+            if self._process is not None and self._selection != selection:
                 if self._users:
-                    raise RuntimeError("本地 Llama 正被其他任务使用，暂时无法切换模型")
+                    raise RuntimeError("本地 Llama 正被其他任务使用，暂时无法切换启动配置")
                 self._stop_locked()
             if self._process is None:
                 if self._users:
                     raise RuntimeError("本地 Llama 已意外退出，正在等待旧请求结束后重试")
-                self._start_locked(executable, model_path, stop_event)
+                self._start_locked(selection, stop_event)
             self._users += 1
             return self._model_id
 
@@ -81,9 +136,10 @@ class LlamaRuntime:
 
     def status(self) -> dict[str, object]:
         if not self._lock.acquire(blocking=False):
+            selection = self._selection
             return {
                 "status": "starting",
-                "loaded_model": self._model_path.name if self._model_path else "",
+                "loaded_model": selection.model_path.name if selection else "",
                 "model_id": self._model_id,
                 "error": "",
             }
@@ -95,14 +151,14 @@ class LlamaRuntime:
                 state = "busy" if self._users else "ready"
             return {
                 "status": state,
-                "loaded_model": self._model_path.name if self._model_path else "",
+                "loaded_model": self._selection.model_path.name if self._selection else "",
                 "model_id": self._model_id,
                 "error": self._error,
             }
         finally:
             self._lock.release()
 
-    def _resolve_selection(self, settings: AppSettings) -> tuple[Path, Path]:
+    def _resolve_selection(self, settings: AppSettings) -> _Selection:
         info = list_llama_models(settings)
         executable_text = str(info.get("executable") or "")
         if not executable_text:
@@ -112,51 +168,52 @@ class LlamaRuntime:
             raise RuntimeError("尚未选择本地 Llama 模型")
         for item in info.get("models") or []:
             if isinstance(item, dict) and item.get("id") == selected:
-                model_path = Path(str(item["path"])).resolve()
-                return model_path, Path(executable_text).resolve()
+                return _Selection(
+                    executable=Path(executable_text).resolve(),
+                    model_path=Path(str(item["path"])).resolve(),
+                    ctx_size=settings.llama_ctx_size,
+                    gpu_layers=settings.llama_gpu_layers,
+                )
         raise FileNotFoundError(f"未找到已选择的本地 Llama 模型：{selected}")
 
     def _start_locked(
         self,
-        executable: Path,
-        model_path: Path,
+        selection: _Selection,
         stop_event: Event | None,
     ) -> None:
         if _port_is_open():
             raise RuntimeError(f"本地 Llama 固定端口 {LOCAL_LLAMA_PORT} 已被其他进程占用")
         self._error = ""
-        command = [
-            str(executable),
-            "-m",
-            str(model_path),
-            "--host",
-            LOCAL_LLAMA_HOST,
-            "--port",
-            str(LOCAL_LLAMA_PORT),
-        ]
-        process = subprocess.Popen(
-            command,
-            cwd=str(executable.parent),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            **popen_kwargs(),
-        )
-        self._process = process
-        self._model_path = model_path
+        process = None
+        stderr = None
         try:
+            process = subprocess.Popen(
+                selection.command(),
+                cwd=str(selection.executable.parent),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                **popen_kwargs(),
+            )
+            assert process.stderr is not None
+            stderr = _StderrTail(process.stderr)
+            self._process = process
+            self._selection = selection
+            self._stderr = stderr
             self._model_id = self._wait_until_ready(process, stop_event)
         except BaseException as exc:
-            terminate_process(process)
-            self._process = None
-            self._model_path = None
-            self._model_id = ""
-            self._error = "" if isinstance(exc, TaskCancelled) else str(exc)
+            if process is not None:
+                terminate_process(process)
+            self._clear_process()
+            if isinstance(exc, Exception) and not isinstance(exc, TaskCancelled):
+                self._error = stderr.describe(str(exc)) if stderr else str(exc)
+                if self._error != str(exc):
+                    raise RuntimeError(self._error) from exc
             raise
 
     def _wait_until_ready(
         self,
-        process: subprocess.Popen[object],
+        process: subprocess.Popen[bytes],
         stop_event: Event | None,
     ) -> str:
         deadline = time.monotonic() + 180
@@ -178,17 +235,19 @@ class LlamaRuntime:
 
     def _refresh_process_state(self) -> None:
         if self._process is not None and self._process.poll() is not None:
-            code = self._process.returncode
-            self._process = None
-            self._model_path = None
-            self._model_id = ""
-            self._error = f"llama-server 已退出，退出码 {code}"
+            message = f"llama-server 已退出，退出码 {self._process.returncode}"
+            self._error = self._stderr.describe(message) if self._stderr else message
+            self._clear_process()
+
+    def _clear_process(self) -> None:
+        self._process = None
+        self._selection = None
+        self._stderr = None
+        self._model_id = ""
 
     def _stop_locked(self) -> None:
         process = self._process
-        self._process = None
-        self._model_path = None
-        self._model_id = ""
+        self._clear_process()
         self._users = 0
         if process is not None:
             terminate_process(process)

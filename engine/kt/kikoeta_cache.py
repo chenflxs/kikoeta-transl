@@ -95,6 +95,7 @@ def cache_completed_job(job: Any) -> int:
                     "job_id": job.job_id,
                     "work_id": work_id,
                     "source_base": source_base(job.cache_context.get("source_base")),
+                    "target_lang": job.settings.target_lang,
                     "completed_at": datetime.now(timezone.utc).isoformat(
                         timespec="seconds"
                     ),
@@ -150,13 +151,14 @@ def cached_file(job_id: str, index: int) -> Path:
     raise FileNotFoundError(job_id)
 
 
-def read_cached_lyric(job_id: str, index: int) -> tuple[str, str, bytes]:
+def read_cached_lyric(job_id: str, index: int) -> tuple[str, str, str, bytes]:
     """Read metadata and content before cache eviction can remove the file."""
     with _LOCK:
         for record in _load_records():
             if record.get("job_id") == job_id and _valid_record(record):
                 source = cached_file(job_id, index)
-                return record["work_id"], record["files"][index]["track_path"], source.read_bytes()
+                target_lang = str(record.get("target_lang") or "zh-cn")
+                return record["work_id"], record["files"][index]["track_path"], target_lang, source.read_bytes()
     raise FileNotFoundError(job_id)
 
 

@@ -9,7 +9,7 @@ from .cleanup import cleanup_intermediates
 from .events import EmitFn
 from .models import AppSettings, Cue, FileKind, FileResult, StageFlags
 from .paths import MEDIA_EXTS, SUBTITLE_EXTS
-from .stages.export import export_cues
+from .stages.export import export_cues, language_suffix
 from .stages.correction_result import CorrectionReview
 from .stages.translation_result import TranslationReview
 from .subtitle import parse_subtitle
@@ -156,7 +156,7 @@ def process_file(
         export_settings = settings
         if not settings.output.suffix:
             if flags.enable_translate:
-                suffix = _language_suffix(settings.target_lang)
+                suffix = language_suffix(settings.target_lang)
             elif needs_correct:
                 suffix = ".fix"
             else:
@@ -219,12 +219,3 @@ def _raise_if_stopped(stop_event: Event | None) -> None:
 
 
 StopRequested = TaskCancelled
-
-
-def _language_suffix(language: str) -> str:
-    value = str(language or "").strip().lower().replace("_", "-")
-    if value in {"zh", "zh-cn", "zh-hans", "zh-hans-cn"}:
-        return ".zh"
-    if value in {"zh-tw", "zh-hant", "zh-hant-tw"}:
-        return ".zh-tw"
-    return "." + (value or "target")

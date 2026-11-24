@@ -139,7 +139,7 @@
   "llsSyncTitle": "Отправлять результаты запросов Kikoeta в Kikoeta-LLS",
   "llsSyncDescription": "Отправляет текст после успешного завершения; локальные задачи не затрагиваются",
   "llsUrl": "Адрес Kikoeta-LLS (HTTP/HTTPS)",
-  "llsUrlHint": "Оставьте пустым для локального http://127.0.0.1:2378",
+  "llsUrlHint": "Оставьте пустым для локального http://127.0.0.1:2377",
   "uploadAuthentication": "Авторизация отправки",
   "twelveCharacterKey": "Ключ из 12 символов",
   "separateCredentials": "Отдельные логин и пароль",

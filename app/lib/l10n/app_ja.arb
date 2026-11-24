@@ -139,7 +139,7 @@
   "llsSyncTitle": "Kikoeta からの翻訳結果を Kikoeta-LLS に送信",
   "llsSyncDescription": "タスク成功後に歌詞を送信します。ローカルタスクには影響しません",
   "llsUrl": "Kikoeta-LLS URL（HTTP/HTTPS）",
-  "llsUrlHint": "空欄ならローカルの http://127.0.0.1:2378 を使用",
+  "llsUrlHint": "空欄ならローカルの http://127.0.0.1:2377 を使用",
   "uploadAuthentication": "アップロード認証",
   "twelveCharacterKey": "12 文字のキー",
   "separateCredentials": "専用のユーザー名とパスワード",

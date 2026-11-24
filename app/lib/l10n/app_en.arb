@@ -139,7 +139,7 @@
   "llsSyncTitle": "Upload results from Kikoeta requests to Kikoeta-LLS",
   "llsSyncDescription": "Uploads lyrics after successful completion; local tasks are unaffected",
   "llsUrl": "Kikoeta-LLS URL (HTTP/HTTPS)",
-  "llsUrlHint": "Leave empty for local http://127.0.0.1:2378",
+  "llsUrlHint": "Leave empty for local http://127.0.0.1:2377",
   "uploadAuthentication": "Upload authentication",
   "twelveCharacterKey": "12-character key",
   "separateCredentials": "Separate username and password",

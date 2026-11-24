@@ -353,7 +353,7 @@
   "llsSyncTitle": "来自 Kikoeta 的翻译请求，产物同步上传到 Kikoeta-LLS",
   "llsSyncDescription": "任务成功完成后上传歌词；本地任务不受影响",
   "llsUrl": "Kikoeta-LLS 地址（HTTP/HTTPS）",
-  "llsUrlHint": "留空使用本机 http://127.0.0.1:2378",
+  "llsUrlHint": "留空使用本机 http://127.0.0.1:2377",
   "uploadAuthentication": "上传验证方式",
   "twelveCharacterKey": "12 位密钥",
   "separateCredentials": "独立账号和密码",

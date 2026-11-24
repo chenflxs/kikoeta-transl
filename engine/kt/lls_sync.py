@@ -40,7 +40,7 @@ def lyric_path(track_path: str, extension: str, target_lang: str) -> str:
 
 
 def _endpoint(value: str) -> str:
-    base = value.strip() or "http://127.0.0.1:2378"
+    base = value.strip() or "http://127.0.0.1:2377"
     parsed = urlsplit(base)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("Kikoeta-LLS 地址必须是 HTTP 或 HTTPS 服务地址")

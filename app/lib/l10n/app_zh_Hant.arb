@@ -139,7 +139,7 @@
   "llsSyncTitle": "來自 Kikoeta 的翻譯請求，產物同步上傳到 Kikoeta-LLS",
   "llsSyncDescription": "任務成功完成後上傳歌詞；本地任務不受影響",
   "llsUrl": "Kikoeta-LLS 地址（HTTP/HTTPS）",
-  "llsUrlHint": "留空使用本機 http://127.0.0.1:2378",
+  "llsUrlHint": "留空使用本機 http://127.0.0.1:2377",
   "uploadAuthentication": "上傳驗證方式",
   "twelveCharacterKey": "12 位金鑰",
   "separateCredentials": "獨立賬號和密碼",

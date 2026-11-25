@@ -55,8 +55,12 @@ def _allowed_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 def _connect(address, timeout, source_address):
     # Validate the exact addresses passed to connect(), with no second DNS lookup.
-    addresses = socket.getaddrinfo(*address, type=socket.SOCK_STREAM)
-    if not addresses or any(not _allowed_address(_ip(item[4][0])) for item in addresses):
+    resolved = socket.getaddrinfo(*address, type=socket.SOCK_STREAM)
+    addresses = [
+        item for item in resolved
+        if _allowed_address(_ip(item[4][0]))
+    ]
+    if not addresses:
         raise ValueError("downloads to this network address are blocked")
     last_error = None
     for family, kind, protocol, _, destination in addresses:

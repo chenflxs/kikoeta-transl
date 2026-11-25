@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
@@ -27,8 +26,6 @@ def load_settings() -> AppSettings:
 
 
 def save_settings(settings: AppSettings) -> AppSettings:
-    if settings.remote_access and settings.remote_password == DEFAULT_REMOTE_PASSWORD:
-        settings.remote_password = secrets.token_urlsafe(24)
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:

@@ -554,9 +554,7 @@ class Handler(BaseHTTPRequestHandler):
         if not _is_remote_api_path(path):
             return True
         settings = load_settings()
-        if self.client_address[0] != HOST and (
-            not settings.remote_access or settings.remote_password == DEFAULT_REMOTE_PASSWORD
-        ):
+        if self.client_address[0] != HOST and not settings.remote_access:
             self._error(403, "LAN remote access is disabled")
             return False
         if _valid_remote_authorization(
@@ -688,17 +686,7 @@ def main() -> None:
     _CLIENT_WATCHDOG_STOP.clear()
     threading.Thread(target=_client_watchdog, daemon=True).start()
     settings = load_settings()
-    if settings.remote_access and settings.remote_password == DEFAULT_REMOTE_PASSWORD:
-        try:
-            settings = save_settings(settings)
-        except OSError as exc:
-            settings = load_settings()
-            print(f"could not rotate the default remote password: {exc}", file=sys.stderr, flush=True)
-    public_host = (
-        "0.0.0.0"
-        if settings.remote_access and settings.remote_password != DEFAULT_REMOTE_PASSWORD
-        else HOST
-    )
+    public_host = "0.0.0.0" if settings.remote_access else HOST
     try:
         public_server = _EngineHTTPServer((public_host, PUBLIC_PORT), Handler)
         _PUBLIC_SERVER = public_server

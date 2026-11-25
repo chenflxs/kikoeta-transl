@@ -772,7 +772,6 @@ def _materialize_remote_files(items: object) -> tuple[list[str], list[str]]:
                     source_url,
                     target,
                     {str(key): str(value) for key, value in headers.items()},
-                    proxy=load_settings().proxy,
                 )
             else:
                 target.write_bytes(base64.b64decode(encoded, validate=True))

@@ -1,18 +1,8 @@
 from __future__ import annotations
 
-import http.client
-import ipaddress
-import socket
 from pathlib import Path
-from urllib.parse import urlsplit
-from urllib.request import (
-    HTTPHandler,
-    HTTPRedirectHandler,
-    HTTPSHandler,
-    ProxyHandler,
-    Request,
-    build_opener,
-)
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 DOWNLOAD_TIMEOUT_SECONDS = 60.0
@@ -21,102 +11,6 @@ DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 _ALLOWED_HEADERS = {"authorization", "cookie"}
-_LAN_NETWORKS = tuple(
-    ipaddress.ip_network(cidr)
-    for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")
-)
-
-
-def _origin(url: str) -> tuple[str, str, int]:
-    parsed = urlsplit(url)
-    if (
-        parsed.scheme not in {"http", "https"}
-        or not parsed.hostname
-        or parsed.username is not None
-        or "%" in parsed.hostname
-    ):
-        raise ValueError("url must be an absolute http or https URL without credentials")
-    port = parsed.port
-    if port == 0:
-        raise ValueError("download port must be between 1 and 65535")
-    return parsed.scheme, parsed.hostname, port or (443 if parsed.scheme == "https" else 80)
-
-
-def _ip(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    ip = ipaddress.ip_address(address)
-    return getattr(ip, "ipv4_mapped", None) or ip
-
-
-def _allowed_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return not (ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved) and (
-        ip.is_global or any(ip in network for network in _LAN_NETWORKS)
-    )
-
-
-def _connect(address, timeout, source_address):
-    # Validate the exact addresses passed to connect(), with no second DNS lookup.
-    resolved = socket.getaddrinfo(*address, type=socket.SOCK_STREAM)
-    addresses = [
-        item for item in resolved
-        if _allowed_address(_ip(item[4][0]))
-    ]
-    if not addresses:
-        raise ValueError("downloads to this network address are blocked")
-    last_error = None
-    for family, kind, protocol, _, destination in addresses:
-        sock = socket.socket(family, kind, protocol)
-        try:
-            sock.settimeout(timeout)
-            if source_address:
-                sock.bind(source_address)
-            sock.connect(destination)
-            if _ip(sock.getsockname()[0]) == _ip(sock.getpeername()[0]):
-                raise ValueError("downloads from this computer are blocked")
-            return sock
-        except OSError as exc:
-            last_error = exc
-            sock.close()
-        except BaseException:
-            sock.close()
-            raise
-    raise last_error
-
-
-class _CheckedHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._create_connection = _connect
-
-
-class _CheckedHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # HTTPSConnection still verifies TLS against the original hostname.
-        self._create_connection = _connect
-
-
-class _CheckedHTTPHandler(HTTPHandler):
-    def http_open(self, req):
-        return self.do_open(_CheckedHTTPConnection, req)
-
-
-class _CheckedHTTPSHandler(HTTPSHandler):
-    def https_open(self, req):
-        return self.do_open(_CheckedHTTPSConnection, req)
-
-
-class _DownloadRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        try:
-            changed_origin = _origin(newurl) != _origin(req.full_url)
-            redirect = super().redirect_request(req, fp, code, msg, headers, newurl)
-        except ValueError:
-            fp.close()
-            raise
-        if redirect is not None and changed_origin:
-            for header in _ALLOWED_HEADERS:
-                redirect.remove_header(header.title())
-        return redirect
 
 
 def download_http_file(
@@ -125,7 +19,9 @@ def download_http_file(
     headers: dict[str, str] | None = None,
 ) -> None:
     """Stream an HTTP(S) resource to a task-owned temporary file."""
-    _origin(source_url)
+    parsed = urlparse(source_url)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("url must be an absolute http or https URL")
     request_headers = {"User-Agent": "kikoeta-transl/1.0"}
     for key, value in (headers or {}).items():
         normalized = str(key).strip().lower()
@@ -133,12 +29,10 @@ def download_http_file(
             raise ValueError(f"unsupported download header: {key}")
         request_headers[key] = str(value)
     request = Request(source_url, headers=request_headers)
-    # A proxy would resolve and connect to the destination outside our checks.
-    opener = build_opener(
-        ProxyHandler({}), _CheckedHTTPHandler(), _CheckedHTTPSHandler(),
-        _DownloadRedirectHandler(),
-    )
-    with opener.open(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+    with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+        final_url = urlparse(response.geturl())
+        if final_url.scheme.lower() not in {"http", "https"}:
+            raise ValueError("download redirect must use http or https")
         status = getattr(response, "status", 200)
         if not 200 <= status < 300:
             raise OSError(f"download failed with HTTP {status}")

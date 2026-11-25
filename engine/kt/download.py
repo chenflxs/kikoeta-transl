@@ -53,6 +53,14 @@ def _allowed_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
+def _uses_proxy_dns(addresses) -> bool:
+    """FlClash fake-IP DNS answers are only meaningful to its HTTP proxy."""
+    fake_network = ipaddress.ip_network("198.18.0.0/15")
+    return bool(addresses) and all(
+        _ip(item[4][0]) in fake_network for item in addresses
+    )
+
+
 def _connect(address, timeout, source_address):
     # Validate the exact addresses passed to connect(), with no second DNS lookup.
     resolved = socket.getaddrinfo(*address, type=socket.SOCK_STREAM)
@@ -109,6 +117,11 @@ class _DownloadRedirectHandler(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         try:
             changed_origin = _origin(newurl) != _origin(req.full_url)
+            _, hostname, port = _origin(newurl)
+            resolved = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+            if not any(_allowed_address(_ip(item[4][0])) for item in resolved):
+                if not _uses_proxy_dns(resolved):
+                    raise ValueError("downloads to this network address are blocked")
             redirect = super().redirect_request(req, fp, code, msg, headers, newurl)
         except ValueError:
             fp.close()
@@ -123,6 +136,7 @@ def download_http_file(
     source_url: str,
     target: Path,
     headers: dict[str, str] | None = None,
+    proxy: str = "",
 ) -> None:
     """Stream an HTTP(S) resource to a task-owned temporary file."""
     _origin(source_url)
@@ -133,11 +147,28 @@ def download_http_file(
             raise ValueError(f"unsupported download header: {key}")
         request_headers[key] = str(value)
     request = Request(source_url, headers=request_headers)
-    # A proxy would resolve and connect to the destination outside our checks.
-    opener = build_opener(
-        ProxyHandler({}), _CheckedHTTPHandler(), _CheckedHTTPSHandler(),
-        _DownloadRedirectHandler(),
-    )
+    parsed = urlsplit(source_url)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        addresses = []
+    if proxy and _uses_proxy_dns(addresses):
+        opener = build_opener(
+            ProxyHandler({"http": proxy, "https": proxy}),
+            _DownloadRedirectHandler(),
+        )
+    else:
+        # Direct connections pin the validated DNS result at connect time.
+        if not addresses:
+            raise OSError(f"could not resolve download host: {host}")
+        if not any(_allowed_address(_ip(item[4][0])) for item in addresses):
+            raise ValueError("downloads to this network address are blocked")
+        opener = build_opener(
+            ProxyHandler({}), _CheckedHTTPHandler(), _CheckedHTTPSHandler(),
+            _DownloadRedirectHandler(),
+        )
     with opener.open(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
         status = getattr(response, "status", 200)
         if not 200 <= status < 300:

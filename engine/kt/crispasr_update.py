@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 import re
@@ -15,6 +16,8 @@ import zipfile
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from threading import Event, RLock, Thread
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 from .crispasr_releases import compatible_assets, environment
@@ -25,10 +28,71 @@ REPOSITORY = "https://github.com/CrispStrobe/CrispASR"
 LATEST_API = "https://api.github.com/repos/CrispStrobe/CrispASR/releases/latest"
 _MANIFEST = ".kikoeta-runtime.json"
 _BUSY = {"downloading", "extracting", "installing"}
+_RELEASE_PAGE = f"{REPOSITORY}/releases/latest"
 
 
 def _opener(proxy: str):
     return build_opener(ProxyHandler({"http": proxy, "https": proxy}) if proxy else ProxyHandler({}))
+
+
+class _ReleaseAssetLinks(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        href = dict(attrs).get("href") or ""
+        if href.startswith(f"{urlsplit(REPOSITORY).path}/releases/download/"):
+            self.links.add(urljoin(REPOSITORY, href))
+
+
+def _release_from_page(proxy: str) -> dict:
+    opener = _opener(proxy)
+    request = Request(_RELEASE_PAGE, headers={"User-Agent": "Kikoeta-Transl"})
+    with opener.open(request, timeout=20) as response:
+        page_url = response.geturl()
+        page = response.read(4 * 1024**2 + 1)
+    if len(page) > 4 * 1024**2:
+        raise ValueError("发行页面过大")
+    tag = urlsplit(page_url).path.rstrip("/").split("/")[-1]
+    if not re.fullmatch(r"v?\d+\.\d+\.\d+", tag):
+        raise ValueError("发行页面中的版本号无效")
+
+    assets_request = Request(
+        f"{REPOSITORY}/releases/expanded_assets/{tag}",
+        headers={"User-Agent": "Kikoeta-Transl"},
+    )
+    with opener.open(assets_request, timeout=20) as response:
+        assets_page = response.read(4 * 1024**2 + 1)
+    if len(assets_page) > 4 * 1024**2:
+        raise ValueError("发行附件列表过大")
+    parser = _ReleaseAssetLinks()
+    parser.feed(assets_page.decode("utf-8", errors="replace"))
+
+    prefix = f"crispasr-{environment()['system']}-{environment()['arch']}"
+    assets = []
+    for index, url in enumerate(sorted(parser.links), start=1):
+        name = urlsplit(url).path.rsplit("/", 1)[-1]
+        if (
+            not name.startswith(prefix)
+            or not name.endswith((".zip", ".tar.gz"))
+            or "-non-cuda" in name
+        ):
+            continue
+        head = Request(url, headers={"User-Agent": "Kikoeta-Transl"}, method="HEAD")
+        with opener.open(head, timeout=20) as response:
+            size = int(response.headers.get("Content-Length") or 0)
+        assets.append({
+            "id": index,
+            "name": name,
+            "size": size,
+            "browser_download_url": url,
+        })
+    if not assets:
+        raise ValueError("发行页面中未找到当前平台的 CrispASR 安装包")
+    return {"tag_name": tag, "assets": assets}
 
 
 @lru_cache(maxsize=8)
@@ -186,11 +250,16 @@ class CrispAsrUpdater:
         with self._lock:
             if self._release is None or self._release_proxy != settings.proxy or time.monotonic() - self._release_time > 300:
                 request = Request(LATEST_API, headers={"User-Agent": "Kikoeta-Transl", "Accept": "application/vnd.github+json"})
-                with _opener(settings.proxy).open(request, timeout=20) as response:
-                    data = response.read(4 * 1024**2 + 1)
-                if len(data) > 4 * 1024**2:
-                    raise ValueError("发行信息过大")
-                release = json.loads(data)
+                try:
+                    with _opener(settings.proxy).open(request, timeout=20) as response:
+                        data = response.read(4 * 1024**2 + 1)
+                    if len(data) > 4 * 1024**2:
+                        raise ValueError("发行信息过大")
+                    release = json.loads(data)
+                except HTTPError as exc:
+                    if exc.code != 403 or exc.headers.get("X-RateLimit-Remaining") != "0":
+                        raise
+                    release = _release_from_page(settings.proxy)
                 if not re.fullmatch(r"v?\d+\.\d+\.\d+", str(release.get("tag_name", ""))):
                     raise ValueError("发行版版本号无效")
                 self._release = release

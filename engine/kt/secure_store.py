@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import base64
 import copy
+import importlib
+import importlib.util
 import os
 import subprocess
 import sys
@@ -36,6 +38,9 @@ MASTER_KEY_NAME = "settings-master-key-v1"
 KEY_FILE = DATA_DIR / ".secret.key"
 BACKEND_FILE = DATA_DIR / ".secret-backend"
 PREFIX = "kt-enc:v1:"
+# Installed on demand because release packages ship without pip dependencies.
+REQUIRED_PACKAGES = ("cryptography", "keyring")
+PIP_TIMEOUT_SECONDS = 120
 
 # Settings fields that must never be written to disk as plaintext.
 SETTINGS_SECRET_PATHS: tuple[tuple[str, ...], ...] = (
@@ -71,6 +76,68 @@ class MasterKeyMissing(SecretStoreError):
 
 def encryption_available() -> bool:
     return Fernet is not None
+
+
+def ensure_dependencies() -> bool:
+    """Install the optional crypto packages if the running interpreter lacks them.
+
+    Release packages ship without pip dependencies, so an existing install that
+    upgrades in place has no cryptography/keyring until pip runs again. Try once
+    at startup; returning False leaves the engine running with settings saved
+    minus the credential fields instead of crashing.
+    """
+    global Fernet
+    missing = [
+        name for name in REQUIRED_PACKAGES
+        if importlib.util.find_spec(name) is None
+    ]
+    if not missing:
+        _reload_fernet()
+        return encryption_available()
+
+    print(f"[secrets] 缺少依赖 {', '.join(missing)}，正在安装……", file=sys.stderr, flush=True)
+    if importlib.util.find_spec("pip") is None:
+        _warn("当前 Python 没有 pip，API Key 等凭据将暂不保存。请手动安装 cryptography、keyring。")
+        return encryption_available()
+    try:
+        subprocess.run(
+            [
+                sys.executable, "-m", "pip", "install", "--quiet",
+                "--disable-pip-version-check", "--retries", "1", "--timeout", "15",
+                *missing,
+            ],
+            check=False,
+            timeout=PIP_TIMEOUT_SECONDS,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        _warn(f"自动安装依赖失败：{exc}。API Key 等凭据将暂不保存。")
+        return encryption_available()
+
+    importlib.invalidate_caches()
+    _reload_fernet()
+    if encryption_available():
+        print("[secrets] 依赖安装完成", file=sys.stderr, flush=True)
+        return True
+    _warn("依赖安装未生效，API Key 等凭据将暂不保存。请手动运行 python -m pip install -r requirements.txt。")
+    return False
+
+
+def _reload_fernet() -> None:
+    """Pick up cryptography after it was installed in this process."""
+    global Fernet
+    if Fernet is not None:
+        return
+    try:
+        module = importlib.import_module("cryptography.fernet")
+    except ImportError:
+        return
+    Fernet = module.Fernet  # type: ignore[assignment]
+    global _FERNET
+    with _LOCK:
+        _FERNET = None
 
 
 def encrypt_secret(value: str) -> str:
@@ -158,6 +225,34 @@ def needs_encryption(
         if isinstance(value, str) and value and not value.startswith(PREFIX):
             return True
     return False
+
+
+def protect_with_fallback(
+    data: Mapping[str, Any] | None,
+    paths: Iterable[tuple[str, ...]],
+    stored: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Encrypt secret fields, falling back to the already-stored ciphertext.
+
+    Used when no master key is available (missing dependency, locked keychain).
+    Writing the data must still succeed so the rest of the settings are saved,
+    but a credential is never written in plaintext: the previous ciphertext is
+    carried over, and a newly typed one is dropped with a warning.
+    """
+    paths = tuple(paths)
+    try:
+        return protect_mapping(data, paths)
+    except SecretStoreError as exc:
+        _warn(f"凭据暂未保存（{exc}）保存后请重新填写这些字段。")
+    cleaned = copy.deepcopy(dict(data or {}))
+    for path in paths:
+        incoming = _get_path(cleaned, path)
+        previous = _get_path(stored, path)
+        if isinstance(previous, str) and previous.startswith(PREFIX):
+            _set_path(cleaned, path, previous)
+        elif isinstance(incoming, str) and incoming and not incoming.startswith(PREFIX):
+            _set_path(cleaned, path, "")
+    return cleaned
 
 
 def restrict_file_permissions(path: Path) -> None:
@@ -417,6 +512,16 @@ def _transform_path(
     last = path[-1]
     if isinstance(current, dict) and last in current and isinstance(current[last], str):
         current[last] = transform(current[last])
+
+
+def _set_path(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    current: Any = data
+    for key in path[:-1]:
+        if not isinstance(current, dict) or not isinstance(current.get(key), dict):
+            return
+        current = current[key]
+    if isinstance(current, dict) and path[-1] in current:
+        current[path[-1]] = value
 
 
 def _windows_principal() -> str:

@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from kt.models import StageFlags
 from kt.llama_runtime import LLAMA_RUNTIME
 from kt.pipeline import process_file
+from kt.secure_store import ensure_dependencies
 from kt.settings import load_settings
 from kt.paths import WORK_DIR
 
@@ -45,6 +46,7 @@ def main() -> None:
         sys.argv = ["server.py", "--host", args.host, "--port", str(args.port)]
         engine_server.main()
         return
+    ensure_dependencies()
     settings = load_settings()
     if args.disable_thinking:
         settings = replace(

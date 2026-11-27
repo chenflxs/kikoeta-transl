@@ -6,11 +6,9 @@ the same per-installation master key as settings.json.
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +18,7 @@ from .secure_store import (
     SecretStoreError,
     encryption_available,
     protect_mapping,
+    protect_with_fallback,
     restrict_file_permissions,
     unprotect_mapping,
 )
@@ -39,6 +38,7 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
     if job.status in {"completed", "failed", "cancelled"}:
         target.unlink(missing_ok=True)
         return
+    stored = _read_existing(target)
     payload = {
         # Version 3 stores the secret fields encrypted; 1 and 2 kept them in
         # plaintext and are migrated by load_checkpoints().
@@ -46,11 +46,11 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
         "job_id": job.job_id,
         "files": job.files,
         "flags": vars(job.flags),
-        "settings": _protect(job.settings.to_dict(), CHECKPOINT_SECRET_PATHS),
+        "settings": _protect(job.settings.to_dict(), CHECKPOINT_SECRET_PATHS, stored.get("settings")),
         "source": job.source,
         "cache_context": job.cache_context,
         "lls_output": (
-            _protect(vars(job.lls_output), CHECKPOINT_LLS_SECRET_PATHS)
+            _protect(vars(job.lls_output), CHECKPOINT_LLS_SECRET_PATHS, stored.get("lls_output"))
             if job.lls_output is not None else None
         ),
         "cleanup_paths": job.cleanup_paths,
@@ -66,34 +66,27 @@ def save_checkpoint(job: Any, work_dir: Path) -> None:
     os.replace(temporary, target)
 
 
-def _protect(data: dict[str, Any], paths: tuple[tuple[str, ...], ...]) -> dict[str, Any]:
+def _read_existing(target: Path) -> dict[str, Any]:
+    """Previous checkpoint payload, used to preserve stored ciphertext."""
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _protect(
+    data: dict[str, Any],
+    paths: tuple[tuple[str, ...], ...],
+    stored: dict[str, Any] | None,
+) -> dict[str, Any]:
     """Encrypt the secret fields of a checkpoint payload.
 
     A missing master key must not silently write plaintext, nor stop a running
-    job from checkpointing: the affected credentials are omitted instead and a
-    warning names the reason. Non-secret job state is always preserved.
+    job from checkpointing: the previously stored ciphertext is carried over and
+    a newly typed credential is dropped with a warning.
     """
-    try:
-        return protect_mapping(data, paths)
-    except SecretStoreError as exc:
-        print(
-            f"[secrets] 检查点中的凭据未保存（{exc}）",
-            file=sys.stderr, flush=True,
-        )
-        cleaned = copy.deepcopy(data)
-        for path in paths:
-            _blank_path(cleaned, path)
-        return cleaned
-
-
-def _blank_path(data: dict[str, Any], path: tuple[str, ...]) -> None:
-    current: Any = data
-    for key in path[:-1]:
-        if not isinstance(current, dict) or not isinstance(current.get(key), dict):
-            return
-        current = current[key]
-    if isinstance(current, dict) and path[-1] in current:
-        current[path[-1]] = ""
+    return protect_with_fallback(data, paths, stored)
 
 
 def load_checkpoints(work_dir: Path) -> list[dict[str, Any]]:

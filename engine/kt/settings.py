@@ -13,7 +13,7 @@ from .secure_store import (
     SecretStoreError,
     encryption_available,
     needs_encryption,
-    protect_mapping,
+    protect_with_fallback,
     restrict_file_permissions,
     unprotect_mapping,
 )
@@ -48,9 +48,25 @@ def load_settings() -> AppSettings:
     return settings
 
 
+def _read_stored() -> dict:
+    """Read the current on-disk settings, used to preserve unreadable secrets."""
+    with _SETTINGS_FILE_LOCK:
+        try:
+            raw = SETTINGS_PATH.read_text(encoding="utf-8")
+        except OSError:
+            return {}
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def save_settings(settings: AppSettings) -> AppSettings:
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = protect_mapping(settings.to_dict(), SETTINGS_SECRET_PATHS)
+    payload = protect_with_fallback(
+        settings.to_dict(), SETTINGS_SECRET_PATHS, _read_stored(),
+    )
     temporary: Path | None = None
     try:
         with NamedTemporaryFile(

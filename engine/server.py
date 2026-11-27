@@ -31,7 +31,7 @@ from kt.recent import (
     list_recent_jobs,
 )
 from kt.settings import DEFAULT_REMOTE_PASSWORD, load_settings, save_settings
-from kt.secure_store import SecretStoreError
+from kt.secure_store import SecretStoreError, ensure_dependencies
 from kt.stages.correct import test_correct
 from kt.llama_runtime import LLAMA_RUNTIME
 from kt.tools import (
@@ -41,6 +41,9 @@ from kt.tools import (
 from kt.paths import WORK_DIR
 
 
+# Release packages ship without pip dependencies; install the crypto packages
+# before touching settings or checkpoints so credentials stay encrypted.
+ensure_dependencies()
 MANAGER = JobManager()
 CRISPASR_UPDATER = CrispAsrUpdater(MANAGER.tool_update_guard)
 HOST = "127.0.0.1"

@@ -100,39 +100,53 @@ def process_file(
         damaged_asr = kind == "media" and any("\ufffd" in item.message for item in cues)
         if damaged_asr:
             damaged_count = sum("\ufffd" in item.message for item in cues)
-            emit("log", file=path, message=f"ASR 听写结果有 {damaged_count} 条字幕包含损坏字符 �，自动启用矫正")
+            emit("log", file=path, message=f"ASR 听写结果有 {damaged_count} 条字幕包含损坏字符 �")
         needs_correct = flags.enable_correct or damaged_asr
+        did_correct = False
 
         if needs_correct:
-            _raise_if_stopped(stop_event)
-            emit("status", file=path, stage="correcting", message="矫正")
-            result.stage = "correcting"
-            from .stages.correct import correct_cues
-            correction_review = CorrectionReview(source_file=path)
-            reference_context = (
-                "任务附加资料（用来理解台本、设定和术语。只处理目标字幕，沿用要求的输出格式）：\n"
-                + additional_context
-            ) if additional_context else ""
-            cues = correct_cues(
-                cues,
-                settings,
-                emit=emit,
-                file=path,
-                stop_event=stop_event,
-                review=correction_review,
-                reference_context=reference_context,
-            )
-            _raise_if_stopped(stop_event)
-            if damaged_asr:
-                remaining = sum("\ufffd" in item.message for item in cues)
-                if remaining:
-                    emit("log", file=path, message=f"矫正完成后仍有 {remaining} 条字幕包含 �，无法从损坏字节确定原文，继续导出")
-            src_cues = [
-                Cue(start=item.start, end=item.end,
-                    message=item.src_message or item.message,
-                    src_message=item.src_message or item.message)
-                for item in cues
-            ]
+            from .stages.correct import correction_available, correct_cues
+            if not correction_available(settings):
+                emit(
+                    "log",
+                    file=path,
+                    message=(
+                        "未配置有效的矫正模型，跳过矫正"
+                        + ("，直接翻译" if flags.enable_translate else "，直接导出字幕")
+                    ),
+                )
+            else:
+                if damaged_asr and not flags.enable_correct:
+                    emit("log", file=path, message="损坏字符触发自动矫正")
+                _raise_if_stopped(stop_event)
+                emit("status", file=path, stage="correcting", message="矫正")
+                result.stage = "correcting"
+                correction_review = CorrectionReview(source_file=path)
+                reference_context = (
+                    "任务附加资料（用来理解台本、设定和术语。只处理目标字幕，沿用要求的输出格式）：\n"
+                    + additional_context
+                ) if additional_context else ""
+                cues = correct_cues(
+                    cues,
+                    settings,
+                    emit=emit,
+                    file=path,
+                    stop_event=stop_event,
+                    review=correction_review,
+                    reference_context=reference_context,
+                )
+                did_correct = True
+                _raise_if_stopped(stop_event)
+                if damaged_asr:
+                    remaining = sum("\ufffd" in item.message for item in cues)
+                    if remaining:
+                        emit("log", file=path, message=f"矫正完成后仍有 {remaining} 条字幕包含 �，无法从损坏字节确定原文，继续导出")
+                src_cues = [
+                    Cue(start=item.start, end=item.end,
+                        message=item.src_message or item.message,
+                        src_message=item.src_message or item.message)
+                    for item in cues
+                ]
 
         if flags.enable_translate:
             _raise_if_stopped(stop_event)
@@ -157,7 +171,7 @@ def process_file(
         if not settings.output.suffix:
             if flags.enable_translate:
                 suffix = language_suffix(settings.target_lang)
-            elif needs_correct:
+            elif did_correct:
                 suffix = ".fix"
             else:
                 suffix = ""

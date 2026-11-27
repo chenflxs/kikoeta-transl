@@ -1,6 +1,11 @@
 # KT's direct third-party dependencies:
 # httpx: online correction (kt/stages/correct.py).
 httpx
+# cryptography: encrypt saved API keys and passwords (kt/secure_store.py).
+cryptography
+# keyring: keep the encryption master key in the OS keychain instead of a file
+# (Windows Credential Manager, macOS Keychain, Linux Secret Service).
+keyring
 # PyYAML: per-job translation config (kt/stages/translate.py).
 # Requests: model-list discovery (kt/tools.py).
 # Both are also used and declared by the bundled GalTransl.

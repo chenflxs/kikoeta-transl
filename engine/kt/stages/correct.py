@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import queue
 from dataclasses import replace
 from threading import Event, Thread
+from urllib.parse import urlparse
 
 from ..subtitle import normalize_cue_timeline
 
@@ -168,6 +170,83 @@ def correct_cues(
         review=review,
         reference_context=reference_context,
     )
+
+
+def correction_available(settings: AppSettings) -> bool:
+    """Whether the current settings can run a correction request.
+
+    Kikoeta jobs force correction on and ASR damage forces it on as well, but
+    neither should make a task fail when no usable correction endpoint exists.
+    Keep this check aligned with the endpoint selection in ``correct_cues``:
+    an explicitly selected local Llama or online correction endpoint is not
+    replaced by the translation endpoint just because it is incomplete.
+    """
+    correct = settings.correct
+    if correct.provider == "local_llama" and settings.llama_model.strip():
+        return _local_llama_available(settings)
+    if (
+        correct.provider == "online"
+        and correct.base_url.strip()
+        and correct.model.strip()
+    ):
+        return _online_endpoint_available(
+            correct.base_url, correct.model, correct.api_key
+        )
+    translate = settings.translate
+    if translate.provider == "local_llama" and settings.llama_model.strip():
+        return _local_llama_available(settings)
+    if (
+        translate.provider == "online"
+        and translate.openai.base_url.strip()
+        and translate.openai.model.strip()
+    ):
+        return _online_endpoint_available(
+            translate.openai.base_url,
+            translate.openai.model,
+            translate.openai.api_key,
+        )
+    return False
+
+
+def _local_llama_available(settings: AppSettings) -> bool:
+    from ..tools import list_llama_models
+
+    try:
+        info = list_llama_models(settings)
+    except Exception:
+        return False
+    if not str(info.get("executable") or "").strip():
+        return False
+    selected = settings.llama_model.strip()
+    return any(
+        isinstance(item, dict) and str(item.get("id") or "") == selected
+        for item in info.get("models") or []
+    )
+
+
+def _online_endpoint_available(base_url: str, model: str, api_key: str) -> bool:
+    if not base_url.strip() or not model.strip():
+        return False
+    # OpenAI-compatible services normally require a key. Local or LAN
+    # gateways (Ollama, LM Studio, llama.cpp) commonly run without one.
+    return bool(api_key.strip()) or _is_local_endpoint(base_url)
+
+
+def _is_local_endpoint(base_url: str) -> bool:
+    text = base_url.strip()
+    if not text:
+        return False
+    parsed = urlparse(text if "://" in text else f"http://{text}")
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private
 
 
 def _correct_cues_with_endpoint(

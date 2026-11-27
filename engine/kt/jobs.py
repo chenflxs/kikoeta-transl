@@ -12,7 +12,7 @@ from typing import Any
 
 from .cleanup import cleanup_intermediates
 from .events import EventBus
-from .job_checkpoint import load_checkpoints, save_checkpoint
+from .job_checkpoint import clear_checkpoint_secrets, load_checkpoints, save_checkpoint
 from .kikoeta_cache import cache_completed_job, source_base
 from .llama_runtime import LLAMA_RUNTIME
 from .lls_sync import sync_completed_job
@@ -20,6 +20,7 @@ from .models import AppSettings, FileResult, JobRequest, OutputSettings, StageFl
 from .paths import SUBTITLE_EXTS, WORK_DIR
 from .pipeline import process_file
 from .recent import record_finished_job
+from .secure_store import cleanup_work_secrets
 from .settings import load_settings, merge_settings
 
 
@@ -104,6 +105,10 @@ class JobManager:
         self._lock = RLock()
         self._active: Job | None = None
         self._closing = False
+        # Legacy builds left plaintext copies of the API token in generated
+        # GalTransl configs and checkpoints. Rewrite or remove them on startup.
+        clear_checkpoint_secrets(WORK_DIR)
+        cleanup_work_secrets(WORK_DIR)
         for raw in load_checkpoints(WORK_DIR):
             try:
                 job = Job(

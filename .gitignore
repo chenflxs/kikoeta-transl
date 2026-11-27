@@ -18,6 +18,10 @@ env/
 !.env.example
 engine/data/settings.json
 engine/data/.settings.json.*.tmp
+engine/data/.secret.key
+engine/data/.secret.key.tmp
+engine/data/.secret-backend
+engine/data/.secret-backend.tmp
 engine/data/*.log
 engine/work/
 output/

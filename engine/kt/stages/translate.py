@@ -12,6 +12,7 @@ from ..cancellation import TaskCancelled, raise_if_cancelled
 from ..events import EmitFn
 from ..models import AppSettings, Cue, cues_to_gt_json
 from ..paths import GALTRANSL_ROOT
+from ..secure_store import restrict_file_permissions
 from .translation_result import TranslationReview
 from .translation_result import looks_untranslated as _looks_untranslated
 from .translation_result import merge_translation_items as _merge_translation_items
@@ -204,6 +205,9 @@ def _translate_cues(
     finally:
         if handler:
             logging.getLogger("GalTransl").removeHandler(handler)
+        # The generated config holds the API token in plaintext. GalTransl has
+        # already loaded it into memory, and a resumed job rebuilds the file.
+        (workspace / "config.yaml").unlink(missing_ok=True)
 
     if (
         (stop_event is not None and stop_event.is_set())
@@ -315,10 +319,15 @@ def _write_config(workspace: Path, settings: AppSettings) -> None:
     proxy["proxies"] = [{"address": settings.proxy}] if settings.proxy else []
     cfg.setdefault("dictionary", {})["defaultDictFolder"] = str(get_active_dict_dir().resolve())
     _keep_gt_dicts(cfg, workspace)
-    (workspace / "config.yaml").write_text(
+    config_path = workspace / "config.yaml"
+    config_path.write_text(
         yaml.dump(cfg, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
     )
+    # The file holds the API token in plaintext for GalTransl to read. Keep it
+    # owner-only for the short lifetime of the job; a placeholder needs no ACL work.
+    if settings.translate.openai.api_key:
+        restrict_file_permissions(config_path)
 
 
 def _keep_gt_dicts(cfg: dict, workspace: Path) -> None:

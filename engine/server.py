@@ -31,6 +31,7 @@ from kt.recent import (
     list_recent_jobs,
 )
 from kt.settings import DEFAULT_REMOTE_PASSWORD, load_settings, save_settings
+from kt.secure_store import SecretStoreError
 from kt.stages.correct import test_correct
 from kt.llama_runtime import LLAMA_RUNTIME
 from kt.tools import (
@@ -164,7 +165,11 @@ class Handler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             settings = AppSettings.from_dict(payload)
-            save_settings(settings)
+            try:
+                save_settings(settings)
+            except SecretStoreError as exc:
+                self._error(500, f"无法加密保存设置：{exc}")
+                return
             self._json(settings.to_dict())
             return
         self._error(404, "not found")

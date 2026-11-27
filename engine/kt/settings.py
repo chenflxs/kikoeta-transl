@@ -8,6 +8,15 @@ from threading import Lock
 
 from .models import AppSettings
 from .paths import DATA_DIR
+from .secure_store import (
+    SETTINGS_SECRET_PATHS,
+    SecretStoreError,
+    encryption_available,
+    needs_encryption,
+    protect_mapping,
+    restrict_file_permissions,
+    unprotect_mapping,
+)
 
 
 SETTINGS_PATH = DATA_DIR / "settings.json"
@@ -21,12 +30,27 @@ def load_settings() -> AppSettings:
             raw = SETTINGS_PATH.read_text(encoding="utf-8")
         except FileNotFoundError:
             return AppSettings()
-    data = json.loads(raw)
-    return AppSettings.from_dict(data)
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return AppSettings()
+    if not isinstance(data, dict):
+        return AppSettings()
+    plaintext = encryption_available() and needs_encryption(data, SETTINGS_SECRET_PATHS)
+    settings = AppSettings.from_dict(unprotect_mapping(data, SETTINGS_SECRET_PATHS))
+    if plaintext:
+        # Migrate an older plaintext file in place so the secrets are covered
+        # from the first read instead of only after the next UI save.
+        try:
+            save_settings(settings)
+        except (OSError, SecretStoreError):
+            pass
+    return settings
 
 
 def save_settings(settings: AppSettings) -> AppSettings:
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = protect_mapping(settings.to_dict(), SETTINGS_SECRET_PATHS)
     temporary: Path | None = None
     try:
         with NamedTemporaryFile(
@@ -34,9 +58,10 @@ def save_settings(settings: AppSettings) -> AppSettings:
             prefix=f".{SETTINGS_PATH.name}.", suffix=".tmp", delete=False,
         ) as file:
             temporary = Path(file.name)
-            json.dump(settings.to_dict(), file, ensure_ascii=False, indent=2)
+            json.dump(payload, file, ensure_ascii=False, indent=2)
             file.flush()
             os.fsync(file.fileno())
+        restrict_file_permissions(temporary)
         # Windows can reject replacement while another thread reads or replaces
         # the destination. The temporary file itself is private to this save.
         with _SETTINGS_FILE_LOCK:
